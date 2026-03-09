@@ -34,6 +34,10 @@ jobs:
       - name: Publish
         run: dotnet publish src/HslBikeApp/HslBikeApp.csproj -c Release -o release
 
+      - name: Inject API key
+        run: |
+          sed -i 's|"DigitransitSubscriptionKey": ""|"DigitransitSubscriptionKey": "${{ secrets.DIGITRANSIT_SUBSCRIPTION_KEY }}"|' release/wwwroot/appsettings.json
+
       - name: Rewrite base href
         run: sed -i 's|<base href="/hsl-bike-app/" />|<base href="/hsl-bike-app/" />|g' release/wwwroot/index.html
 
