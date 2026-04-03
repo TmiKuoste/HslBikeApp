@@ -24,8 +24,18 @@ Helsinki city bike availability app. Two repositories form the full system:
                                                      └─────────────────────────────┘
 ```
 
-- The **frontend** NEVER calls the HSL API directly — all data comes through the aggregator.
 - The **aggregator** holds the Digitransit API key as a secret in Azure Functions app settings.
+- The aggregator uses **write/read separation**: a timer function polls HSL every 2 min and writes to Azure Blob Storage; HTTP functions read from blob for sub-second responses.
+
+### Hybrid Fallback (Cold Start Mitigation)
+
+The frontend uses **progressive loading** to avoid blocking on aggregator cold start:
+
+1. **Immediate**: fetch station data directly from HSL Digitransit (no backend dependency).
+2. **Background**: call the aggregator for enriched data (snapshots, trends).
+3. **Progressive**: hourly graphs and popular destinations load when the aggregator responds.
+
+Basic station view is never blocked by the aggregator. See `docs/adr/001-azure-functions-backend.md` for full rationale.
 
 ## API Contract (HslBikeDataAggregator endpoints)
 
