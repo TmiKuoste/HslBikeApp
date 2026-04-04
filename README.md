@@ -6,11 +6,12 @@ A Blazor WebAssembly app showing real-time Helsinki city bike station availabili
 
 ## Features
 
-- Real-time bike station availability from Digitransit GBFS API
-- Interactive Leaflet.js map with color-coded station markers
-- Availability trend tracking (instant on page load via pre-built snapshots)
+- Real-time bike station availability
+- Interactive Leaflet.js map with colour-coded station markers
+- Availability trend arrows (bikes rented/returned since last snapshot)
 - Change indicators showing bikes rented/returned between refreshes
 - Station detail panel with popular trip destinations
+- Hourly availability graph showing typical bike counts throughout the day
 - Helsinki cycle lane overlay from open WFS data
 - Dark mode support (follows OS preference)
 - Auto-refresh every 30 seconds + manual refresh
@@ -19,9 +20,22 @@ A Blazor WebAssembly app showing real-time Helsinki city bike station availabili
 
 - **Blazor WebAssembly** — standalone, hosted as static files on GitHub Pages
 - **Leaflet.js** — raw JS interop for map rendering (OSM tiles)
-- **Digitransit GBFS API** — real-time station data
-- **GitHub Actions** — snapshot poller (every 5 min) for instant trend data on load
-- **hsl-bike-data-aggregator** — historical trip data (separate repo)
+- **HslBikeDataAggregator** — C# Azure Functions backend ([separate repo](https://github.com/Kuoste/HslBikeDataAggregator)); provides stations, snapshots, hourly availability profiles, and popular destinations. Holds the Digitransit API key.
+- **Digitransit API** — called directly by the frontend as an immediate fallback while the aggregator warms up (hybrid cold-start mitigation)
+- **GitHub Actions** — CI/CD; `tools/FetchSnapshot` snapshot poller runs until aggregator snapshot endpoint is wired in
+
+### Data flow
+
+```
+Page load (immediate)   ──► Digitransit API ──► station markers on map
+Page load (background)  ──► HslBikeDataAggregator
+                                ├─ /api/stations          ─► live availability
+                                ├─ /api/snapshots         ─► trend arrows
+                                ├─ /api/stations/{id}/availability  ─► hourly graph
+                                └─ /api/stations/{id}/destinations  ─► popular destinations
+```
+
+Basic station view is never blocked by the aggregator's cold start. See [`docs/adr/001-azure-functions-backend.md`](docs/adr/001-azure-functions-backend.md) for full rationale.
 
 ## Setup
 
@@ -41,18 +55,18 @@ A Blazor WebAssembly app showing real-time Helsinki city bike station availabili
    dotnet test
    ```
 
-## Seasonal behavior
+## Seasonal behaviour
 
-HSL city bikes are seasonal. Outside the operating season, the upstream live station feed can legitimately return zero active stations. When that happens, the app now shows an explicit status message instead of leaving the map blank without explanation.
+HSL city bikes are seasonal. Outside the operating season, the upstream live station feed can legitimately return zero active stations. When that happens, the app shows an explicit status message instead of leaving the map blank without explanation.
 
 ## API Key
 
 Get a free API key from the [Digitransit API portal](https://portal-api.digitransit.fi/).  
-The key is used for rate-limiting — it's a public transit API, not a secret.
+The key is used for rate-limiting — it is a public transit API, not a secret.
 
-For GitHub Actions snapshot poller, add `DIGITRANSIT_SUBSCRIPTION_KEY` as a repository secret.
+For GitHub Actions, add `DIGITRANSIT_SUBSCRIPTION_KEY` as a repository secret.
 
-## Data Sources And Attribution
+## Data Sources and Attribution
 
 - Live station data comes from the Digitransit API. Digitransit states that the data is available under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The app attributes the data to Digitransit and shows the live retrieval timestamp in the UI.
 - Map tiles and map data come from [OpenStreetMap](https://www.openstreetmap.org/copyright). OpenStreetMap data is licensed under ODbL and is attributed in the map UI.
@@ -68,4 +82,5 @@ src/HslBikeApp/          — Blazor WASM app
 tools/FetchSnapshot/      — Console app for GH Actions snapshot poller
 tests/HslBikeApp.Tests/   — xUnit + bUnit tests
 .github/workflows/        — CI/CD + snapshot poller
+docs/adr/                 — Architecture Decision Records
 ```
