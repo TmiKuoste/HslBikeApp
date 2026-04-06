@@ -61,6 +61,7 @@ Helsinki city bike availability app. Two repositories form the full system:
 
 ## Delivery Workflow
 
+- Always start by pulling the latest from the remote (`git pull`) before beginning any work to prevent merge conflicts.
 - Keep implementation work tied to an open GitHub issue.
 - Use an issue branch named issue-<number>-<short-description> for delivery.
 - If an issue was closed before its code was pushed, reopen the issue before continuing work.
