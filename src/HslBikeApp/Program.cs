@@ -18,8 +18,7 @@ var httpClientWithHeaders = new HttpClient(new AppSourceHeaderHandler());
 var plainHttpClient = new HttpClient();
 
 builder.Services.AddSingleton(new StationService(httpClientWithHeaders, aggregatorBaseUrl));
-builder.Services.AddSingleton(new AvailabilityService(httpClientWithHeaders, aggregatorBaseUrl));
-builder.Services.AddSingleton(new HistoryService(httpClientWithHeaders, aggregatorBaseUrl));
+builder.Services.AddSingleton(new StatisticsService(httpClientWithHeaders, aggregatorBaseUrl));
 builder.Services.AddSingleton(new CycleLaneService(plainHttpClient));
 builder.Services.AddSingleton(new SnapshotService(httpClientWithHeaders, aggregatorBaseUrl));
 builder.Services.AddSingleton<AppState>();

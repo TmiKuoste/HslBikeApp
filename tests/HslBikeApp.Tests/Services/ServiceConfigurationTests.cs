@@ -40,23 +40,29 @@ public class ServiceConfigurationTests
         var httpClient = new HttpClient(new StubHttpMessageHandler((request, _) =>
         {
             capturedUris.Add(request.RequestUri!);
+            // Each service expects a different JSON shape
+            var url = request.RequestUri?.AbsolutePath ?? "";
+            var body = url switch
+            {
+                _ when url.Contains("/snapshots") => """{"intervalMinutes":15,"timestamps":[],"rows":[]}""",
+                _ when url.Contains("/statistics") => """{"month":"2026-06","demand":{"departuresByHour":[],"arrivalsByHour":[],"weekdayDeparturesByHour":[],"weekendDeparturesByHour":[],"weekdayArrivalsByHour":[],"weekendArrivalsByHour":[]},"destinations":{"fields":[],"rows":[]}}""",
+                _ => "[]"
+            };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("[]", Encoding.UTF8, "application/json")
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
             });
         }));
 
         var stationService = new StationService(httpClient, baseUrl);
         var snapshotService = new SnapshotService(httpClient, baseUrl);
-        var availabilityService = new AvailabilityService(httpClient, baseUrl);
-        var historyService = new HistoryService(httpClient, baseUrl);
+        var statisticsService = new StatisticsService(httpClient, baseUrl);
 
         await stationService.FetchStationsAsync();
         await snapshotService.FetchSnapshotsAsync();
-        await availabilityService.FetchAvailabilityAsync("001");
-        await historyService.FetchHistoryAsync("001");
+        await statisticsService.FetchStatisticsAsync("001");
 
-        Assert.Equal(4, capturedUris.Count);
+        Assert.Equal(3, capturedUris.Count);
         Assert.All(capturedUris, uri =>
         {
             Assert.Equal("aggregator.example", uri.Host);

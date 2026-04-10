@@ -4,12 +4,16 @@ using HslBikeApp.Models;
 
 namespace HslBikeApp.Services;
 
-public class AvailabilityService
+/// <summary>
+/// Fetches monthly station statistics from <c>GET /api/stations/{id}/statistics</c>.
+/// Replaces both the former HistoryService and AvailabilityService.
+/// </summary>
+public class StatisticsService
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
 
-    public AvailabilityService(HttpClient http, string baseUrl)
+    public StatisticsService(HttpClient http, string baseUrl)
     {
         ArgumentNullException.ThrowIfNull(http);
 
@@ -20,12 +24,16 @@ public class AvailabilityService
         _baseUrl = baseUrl.TrimEnd('/');
     }
 
-    public async Task<List<HourlyAvailability>> FetchAvailabilityAsync(string stationId)
+    /// <summary>
+    /// Fetches monthly statistics for a station.
+    /// Returns <c>null</c> when the endpoint returns 404 or the request fails.
+    /// </summary>
+    public async Task<MonthlyStationStatistics?> FetchStatisticsAsync(string stationId)
     {
         if (string.IsNullOrWhiteSpace(stationId))
             throw new ArgumentException("Station ID must be provided.", nameof(stationId));
 
-        var url = $"{_baseUrl}/api/stations/{Uri.EscapeDataString(stationId)}/availability";
+        var url = $"{_baseUrl}/api/stations/{Uri.EscapeDataString(stationId)}/statistics";
 
         HttpResponseMessage response;
         try
@@ -34,14 +42,14 @@ public class AvailabilityService
         }
         catch (HttpRequestException)
         {
-            return [];
+            return null;
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)
-            return [];
+            return null;
 
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<List<HourlyAvailability>>() ?? [];
+        return await response.Content.ReadFromJsonAsync<MonthlyStationStatistics>();
     }
 }

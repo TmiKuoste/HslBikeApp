@@ -1,8 +1,9 @@
-// map-interop.js — Leaflet JS interop for Blazor WASM (~80 lines)
+// map-interop.js — Leaflet JS interop for Blazor WASM
 window.MapInterop = {
     _map: null,
     _markers: {},
     _polylines: [],
+    _destinationLines: [],
     _dotNetRef: null,
     _selectedId: null,
 
@@ -96,6 +97,30 @@ window.MapInterop = {
             this._map.removeLayer(p);
         }
         this._polylines = [];
+    },
+
+    updateDestinationRoutes: function (routesJson) {
+        this.clearDestinationRoutes();
+        const routes = JSON.parse(routesJson);
+        for (const route of routes) {
+            const line = L.polyline([route.from, route.to], {
+                color: 'rgba(33, 150, 243, 0.6)',
+                weight: route.weight || 3,
+                dashArray: null,
+                className: 'destination-route'
+            }).addTo(this._map);
+            if (route.tooltip) {
+                line.bindTooltip(route.tooltip, { sticky: true });
+            }
+            this._destinationLines.push(line);
+        }
+    },
+
+    clearDestinationRoutes: function () {
+        for (const line of this._destinationLines) {
+            this._map.removeLayer(line);
+        }
+        this._destinationLines = [];
     },
 
     invalidateSize: function () {

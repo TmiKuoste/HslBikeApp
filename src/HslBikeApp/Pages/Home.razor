@@ -89,13 +89,17 @@
 @if (_showDetail && State.SelectedStation is not null)
 {
     <StationDetailPanel Station="State.SelectedStation"
-                        History="State.History"
-                        IsLoadingHistory="State.IsLoadingHistory"
-                        AvailabilityProfile="State.AvailabilityProfile"
-                        IsLoadingAvailability="State.IsLoadingAvailability"
+                        Destinations="State.Destinations"
+                        IsLoadingStatistics="State.IsLoadingStatistics"
+                        Statistics="State.Statistics"
                         Trend="@State.GetTrend(State.SelectedStation.Id)"
                         Sparkline="@State.GetSparkline(State.SelectedStation.Id)"
-                        OnBack="OnBackFromDetail" />
+                        SnapshotCounts="@State.GetStationSnapshotCounts(State.SelectedStation.Id)"
+                        Timestamps="@State.SnapshotTimestamps"
+                        IsGap="@State.IsSnapshotGap"
+                        AllStations="@State.Stations"
+                        OnBack="OnBackFromDetail"
+                        OnToggleMonthlyStats="OnToggleMonthlyStats" />
 }
 
 @if (State.StationError is not null)
@@ -156,6 +160,7 @@
 
     private void OnViewDetail() => _showDetail = true;
     private void OnBackFromDetail() => _showDetail = false;
+    private async Task OnToggleMonthlyStats() => await State.LoadStatisticsAsync();
 
     private static string FormatUtc(DateTime value) =>
         value.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
