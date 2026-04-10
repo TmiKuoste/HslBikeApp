@@ -66,6 +66,36 @@
         {
             await JS.InvokeVoidAsync("MapInterop.clearPolylines");
         }
+
+        // Destination routes
+        if (State.SelectedStation is not null && State.Destinations.Count > 0)
+        {
+            var fromStation = State.SelectedStation;
+            var maxTrips = State.Destinations.Max(d => d.TripCount);
+            var routes = State.Destinations.Take(15).Select(d =>
+            {
+                var toStation = State.Stations.FirstOrDefault(s =>
+                    s.Id.Equals(d.ArrivalStationId, StringComparison.OrdinalIgnoreCase));
+                if (toStation is null) return null;
+
+                var weight = maxTrips > 0 ? 2 + (double)d.TripCount / maxTrips * 6 : 3;
+                return new
+                {
+                    from = new[] { fromStation.Latitude, fromStation.Longitude },
+                    to = new[] { toStation.Latitude, toStation.Longitude },
+                    weight,
+                    tooltip = $"{toStation.Name}: {d.TripCount} trips, avg {d.AverageDurationFormatted}" +
+                              (d.AverageDistanceMetres > 0 ? $", {(d.AverageDistanceMetres / 1000.0):0.1} km" : "")
+                };
+            }).Where(r => r is not null).ToList();
+
+            await JS.InvokeVoidAsync("MapInterop.updateDestinationRoutes",
+                System.Text.Json.JsonSerializer.Serialize(routes));
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("MapInterop.clearDestinationRoutes");
+        }
     }
 
     [JSInvokable]

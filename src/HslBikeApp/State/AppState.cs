@@ -6,14 +6,12 @@ namespace HslBikeApp.State;
 public class AppState : IDisposable
 {
     private readonly StationService _stationService;
-    private readonly AvailabilityService _availabilityService;
-    private readonly HistoryService _historyService;
+    private readonly StatisticsService _statisticsService;
     private readonly CycleLaneService _cycleLaneService;
     private readonly SnapshotService _snapshotService;
 
     private Timer? _refreshTimer;
     private const int RefreshIntervalMs = 30_000;
-    private const int MaxSnapshots = 60;
 
     // --------------- stations ---------------
     public List<BikeStation> Stations { get; private set; } = [];
@@ -39,10 +37,11 @@ public class AppState : IDisposable
 
     // --------------- selected station ---------------
     public BikeStation? SelectedStation { get; private set; }
-    public List<StationHistory> History { get; private set; } = [];
-    public bool IsLoadingHistory { get; private set; }
-    public List<HourlyAvailability> AvailabilityProfile { get; private set; } = [];
-    public bool IsLoadingAvailability { get; private set; }
+
+    // --------------- monthly statistics ---------------
+    public MonthlyStationStatistics? Statistics { get; private set; }
+    public List<DestinationRow> Destinations { get; private set; } = [];
+    public bool IsLoadingStatistics { get; private set; }
 
     // --------------- cycle lanes ---------------
     public List<CycleLane> CycleLanes { get; private set; } = [];
@@ -52,30 +51,23 @@ public class AppState : IDisposable
     // --------------- change tracking ---------------
     public Dictionary<string, int> BikeChanges { get; private set; } = new();
 
-    // --------------- trend tracking ---------------
-    private List<StationSnapshot> _snapshots = [];
-    public IReadOnlyList<StationSnapshot> Snapshots => _snapshots;
-
     public event Action? OnStateChanged;
 
     public AppState(
         StationService stationService,
-        AvailabilityService availabilityService,
-        HistoryService historyService,
+        StatisticsService statisticsService,
         CycleLaneService cycleLaneService,
         SnapshotService snapshotService)
     {
         _stationService = stationService;
-        _availabilityService = availabilityService;
-        _historyService = historyService;
+        _statisticsService = statisticsService;
         _cycleLaneService = cycleLaneService;
         _snapshotService = snapshotService;
     }
 
     public async Task InitAsync()
     {
-        // Load pre-built snapshots first for instant trends
-        _snapshots = await _snapshotService.FetchSnapshotsAsync();
+        await _snapshotService.FetchSnapshotsAsync();
         await LoadStationsAsync();
         StartAutoRefresh();
     }
@@ -124,14 +116,8 @@ public class AppState : IDisposable
             }
 
             // Append live snapshot for trend tracking
-            var snapshot = new StationSnapshot
-            {
-                Timestamp = DateTime.UtcNow,
-                BikeCounts = Stations.ToDictionary(s => s.Id, s => s.BikesAvailable)
-            };
-            _snapshots.Add(snapshot);
-            if (_snapshots.Count > MaxSnapshots)
-                _snapshots = _snapshots.Skip(_snapshots.Count - MaxSnapshots).ToList();
+            _snapshotService.AppendLiveSnapshot(
+                Stations.ToDictionary(s => s.Id, s => s.BikesAvailable));
         }
         catch (Exception ex)
         {
@@ -149,65 +135,45 @@ public class AppState : IDisposable
         ArgumentNullException.ThrowIfNull(station);
 
         SelectedStation = station;
-        History = [];
-        AvailabilityProfile = [];
-        IsLoadingHistory = true;
-        IsLoadingAvailability = true;
+        Destinations = [];
+        Statistics = null;
         NotifyStateChanged();
+    }
 
-        var historyTask = TryFetchHistoryAsync(station.Id);
-        var availabilityTask = TryFetchAvailabilityAsync(station.Id);
+    /// <summary>
+    /// Lazy-loads monthly statistics for the currently selected station.
+    /// Called when the user opens the monthly stats view.
+    /// </summary>
+    public async Task LoadStatisticsAsync()
+    {
+        if (SelectedStation is null) return;
+
+        IsLoadingStatistics = true;
+        NotifyStateChanged();
 
         try
         {
-            var history = await historyTask;
-            var availability = await availabilityTask;
-
-            if (SelectedStation?.Id == station.Id)
-            {
-                History = history;
-                AvailabilityProfile = availability;
-            }
+            Statistics = await _statisticsService.FetchStatisticsAsync(SelectedStation.Id);
+            Destinations = Statistics?.Destinations.ParseRows() ?? [];
+        }
+        catch
+        {
+            Statistics = null;
+            Destinations = [];
         }
         finally
         {
-            IsLoadingHistory = false;
-            IsLoadingAvailability = false;
+            IsLoadingStatistics = false;
             NotifyStateChanged();
-        }
-    }
-
-    private async Task<List<StationHistory>> TryFetchHistoryAsync(string stationId)
-    {
-        try
-        {
-            return await _historyService.FetchHistoryAsync(stationId);
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private async Task<List<HourlyAvailability>> TryFetchAvailabilityAsync(string stationId)
-    {
-        try
-        {
-            return await _availabilityService.FetchAvailabilityAsync(stationId);
-        }
-        catch
-        {
-            return [];
         }
     }
 
     public void ClearSelection()
     {
         SelectedStation = null;
-        History = [];
-        AvailabilityProfile = [];
-        IsLoadingHistory = false;
-        IsLoadingAvailability = false;
+        Destinations = [];
+        Statistics = null;
+        IsLoadingStatistics = false;
         NotifyStateChanged();
     }
 
@@ -242,41 +208,26 @@ public class AppState : IDisposable
         RestartAutoRefresh();
     }
 
-    public AvailabilityTrend GetTrend(string stationId)
-    {
-        if (_snapshots.Count < 2) return AvailabilityTrend.Stable;
+    /// <summary>Derives a trend from the snapshot service for a given station.</summary>
+    public AvailabilityTrend GetTrend(string stationId) =>
+        _snapshotService.GetTrend(stationId);
 
-        // Use last 6 snapshots (or all if fewer) to compute rate of change
-        var recent = _snapshots.Skip(Math.Max(0, _snapshots.Count - 6)).ToList();
-        var first = recent.First();
-        var last = recent.Last();
+    /// <summary>Returns sparkline data from the snapshot service for a given station.</summary>
+    public List<int> GetSparkline(string stationId, int count = 12) =>
+        _snapshotService.GetSparkline(stationId, count);
 
-        if (!first.BikeCounts.TryGetValue(stationId, out var firstCount) ||
-            !last.BikeCounts.TryGetValue(stationId, out var lastCount))
-            return AvailabilityTrend.Stable;
+    /// <summary>Returns the snapshot timestamps.</summary>
+    public IReadOnlyList<DateTime> SnapshotTimestamps => _snapshotService.Timestamps;
 
-        var timeDiffMinutes = (last.Timestamp - first.Timestamp).TotalMinutes;
-        if (timeDiffMinutes < 1) return AvailabilityTrend.Stable;
+    /// <summary>Returns the snapshot interval in minutes.</summary>
+    public int SnapshotIntervalMinutes => _snapshotService.IntervalMinutes;
 
-        var ratePerMinute = (lastCount - firstCount) / timeDiffMinutes;
+    /// <summary>Returns bike counts for a station from the snapshot time-series.</summary>
+    public int[] GetStationSnapshotCounts(string stationId) =>
+        _snapshotService.GetStationCounts(stationId);
 
-        return ratePerMinute switch
-        {
-            <= -2 => AvailabilityTrend.RapidDecrease,
-            <= -0.5 => AvailabilityTrend.Decreasing,
-            >= 2 => AvailabilityTrend.RapidIncrease,
-            >= 0.5 => AvailabilityTrend.Increasing,
-            _ => AvailabilityTrend.Stable
-        };
-    }
-
-    public List<int> GetSparkline(string stationId, int count = 12)
-    {
-        return _snapshots
-            .Skip(Math.Max(0, _snapshots.Count - count))
-            .Select(s => s.BikeCounts.TryGetValue(stationId, out var c) ? c : 0)
-            .ToList();
-    }
+    /// <summary>Returns whether there is a polling gap at the given snapshot index.</summary>
+    public bool IsSnapshotGap(int index) => _snapshotService.IsGap(index);
 
     private void StartAutoRefresh()
     {

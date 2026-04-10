@@ -8,10 +8,7 @@ namespace HslBikeApp.Tests.State;
 
 public class AppStateTests
 {
-    private static AppState CreateAppState(
-        List<BikeStation>? stations = null,
-        List<StationSnapshot>? snapshots = null,
-        List<HourlyAvailability>? availability = null)
+    private static AppState CreateAppState(List<BikeStation>? stations = null)
     {
         var stationHandler = new MockHttpHandler();
         if (stations is not null)
@@ -23,37 +20,22 @@ public class AppStateTests
             stationHandler.SetResponse("/api/stations", stationJson);
         }
 
-        var stationService = new StationService(new HttpClient(stationHandler) { BaseAddress = new Uri("https://test.local/") }, "https://test.local");
-        var historyService = new HistoryService(new HttpClient(new MockHttpHandler()), "https://test.local");
-        var availabilityHandler = new MockHttpHandler();
-        if (availability is not null)
-        {
-            availabilityHandler.SetResponse("/availability", JsonSerializer.Serialize(availability, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            }));
-        }
-        var availabilityService = new AvailabilityService(new HttpClient(availabilityHandler) { BaseAddress = new Uri("https://test.local/") }, "https://test.local");
+        var stationService = new StationService(
+            new HttpClient(stationHandler) { BaseAddress = new Uri("https://test.local/") },
+            "https://test.local");
+        var statisticsService = new StatisticsService(new HttpClient(new MockHttpHandler()), "https://test.local");
         var cycleLaneService = new CycleLaneService(new HttpClient(new MockHttpHandler()));
+        var snapshotService = new SnapshotService(
+            new HttpClient(new MockHttpHandler()) { BaseAddress = new Uri("https://test.local/") },
+            "https://test.local");
 
-        var snapshotHandler = new MockHttpHandler();
-        if (snapshots is not null)
-        {
-            snapshotHandler.SetResponse("snapshots", JsonSerializer.Serialize(snapshots, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            }));
-        }
-        var snapshotService = new SnapshotService(new HttpClient(snapshotHandler) { BaseAddress = new Uri("https://test.local/") }, "https://test.local");
-
-        return new AppState(stationService, availabilityService, historyService, cycleLaneService, snapshotService);
+        return new AppState(stationService, statisticsService, cycleLaneService, snapshotService);
     }
 
     [Fact]
     public void SetSearchQuery_FiltersStations()
     {
         var state = CreateAppState();
-        // Manually set stations via reflection for unit testing
         typeof(AppState).GetProperty("Stations")!.SetValue(state, new List<BikeStation>
         {
             new() { Id = "1", Name = "Kaivopuisto", Address = "Kaivopuisto 1" },
@@ -95,90 +77,35 @@ public class AppStateTests
     }
 
     [Fact]
-    public void GetTrend_WithFewSnapshots_ReturnsStable()
+    public void GetTrend_WhenNoSnapshots_ReturnsStable()
     {
         var state = CreateAppState();
         Assert.Equal(AvailabilityTrend.Stable, state.GetTrend("001"));
     }
 
     [Fact]
-    public void GetTrend_DecreasingBikes_ReturnsDecrease()
-    {
-        var state = CreateAppState();
-        // Inject snapshots showing decrease
-        var snapshots = new List<StationSnapshot>();
-        var baseTime = DateTime.UtcNow.AddMinutes(-30);
-        for (int i = 0; i < 6; i++)
-        {
-            snapshots.Add(new StationSnapshot
-            {
-                Timestamp = baseTime.AddMinutes(i * 5),
-                BikeCounts = new Dictionary<string, int> { ["001"] = 20 - i * 4 }
-            });
-        }
-
-        // Use reflection to set _snapshots
-        var field = typeof(AppState).GetField("_snapshots", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        field.SetValue(state, snapshots);
-
-        var trend = state.GetTrend("001");
-        Assert.True(trend == AvailabilityTrend.Decreasing || trend == AvailabilityTrend.RapidDecrease);
-    }
-
-    [Fact]
-    public void GetSparkline_ReturnsLastNCounts()
-    {
-        var state = CreateAppState();
-        var snapshots = new List<StationSnapshot>();
-        for (int i = 0; i < 15; i++)
-        {
-            snapshots.Add(new StationSnapshot
-            {
-                Timestamp = DateTime.UtcNow.AddMinutes(-15 + i),
-                BikeCounts = new Dictionary<string, int> { ["001"] = i }
-            });
-        }
-
-        var field = typeof(AppState).GetField("_snapshots", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        field.SetValue(state, snapshots);
-
-        var sparkline = state.GetSparkline("001", 5);
-        Assert.Equal(5, sparkline.Count);
-        Assert.Equal(new List<int> { 10, 11, 12, 13, 14 }, sparkline);
-    }
-
-    [Fact]
     public void ClearSelection_ResetsState()
     {
         var state = CreateAppState();
-        typeof(AppState).GetProperty("AvailabilityProfile")!.SetValue(state, new List<HourlyAvailability>
-        {
-            new() { Hour = 8, AverageBikesAvailable = 5.2 }
-        });
         state.ClearSelection();
+
         Assert.Null(state.SelectedStation);
-        Assert.Empty(state.History);
-        Assert.Empty(state.AvailabilityProfile);
+        Assert.Empty(state.Destinations);
+        Assert.Null(state.Statistics);
+        Assert.False(state.IsLoadingStatistics);
     }
 
     [Fact]
-    public async Task SelectStationAsync_PopulatesAvailabilityProfile()
+    public async Task SelectStationAsync_SetsSelectedStation()
     {
-        var availability = Enumerable.Range(0, 24)
-            .Select(hour => new HourlyAvailability
-            {
-                Hour = hour,
-                AverageBikesAvailable = hour / 2.0
-            })
-            .ToList();
-
-        var state = CreateAppState(availability: availability);
+        var state = CreateAppState();
         var station = new BikeStation { Id = "001", Name = "Kamppi", Address = "Address" };
 
         await state.SelectStationAsync(station);
 
-        Assert.Equal(24, state.AvailabilityProfile.Count);
-        Assert.False(state.IsLoadingAvailability);
+        Assert.Equal(station, state.SelectedStation);
+        Assert.Empty(state.Destinations);
+        Assert.Null(state.Statistics);
     }
 
     [Fact]

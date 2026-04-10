@@ -33,35 +33,47 @@
         }
     </div>
 
+    <!-- Real-time availability history graph -->
     <div class="detail-card">
-        <h4>Typical Availability</h4>
+        <h4>Availability History</h4>
 
-        @if (IsLoadingAvailability)
+        @if (SnapshotCounts.Length > 1 && Timestamps.Count > 1)
         {
-            <div class="loading-spinner" style="width:24px;height:24px;border-width:3px;margin:12px auto;"></div>
-        }
-        else if (AvailabilityProfile.Count == 0)
-        {
-            <div class="availability-empty">No hourly availability available yet.</div>
+            <div class="availability-legend">
+                @Timestamps[0].ToLocalTime().ToString("HH:mm", InvariantCulture) &ndash;
+                @Timestamps[^1].ToLocalTime().ToString("HH:mm", InvariantCulture)
+                &middot; @Timestamps.Count points
+            </div>
+            <div class="snapshot-chart-wrapper">
+                <svg class="snapshot-chart" viewBox="0 0 400 160" preserveAspectRatio="none"
+                     aria-label="Bike availability over time">
+                    <!-- Capacity reference line -->
+                    <line class="capacity-line"
+                          x1="0" y1="@GetChartY(Station.Capacity)"
+                          x2="400" y2="@GetChartY(Station.Capacity)" />
+
+                    @{
+                        var segments = GetAreaSegments();
+                    }
+                    @foreach (var seg in segments)
+                    {
+                        <path class="@seg.CssClass" d="@seg.Path" />
+                        <polyline class="snapshot-line @seg.CssClass" points="@seg.LinePoints" />
+                    }
+
+                    <!-- Latest value dot -->
+                    @{
+                        var lastX = GetChartX(SnapshotCounts.Length - 1);
+                        var lastY = GetChartY(SnapshotCounts[^1]);
+                    }
+                    <circle class="latest-dot" cx="@F(lastX)" cy="@F(lastY)" r="4" />
+                    <text class="latest-label" x="@F(lastX)" y="@F(lastY - 10)">@SnapshotCounts[^1]</text>
+                </svg>
+            </div>
         }
         else
         {
-            <div class="availability-legend">Current hour highlighted</div>
-            <div class="availability-chart-wrapper">
-                <div class="availability-chart" role="img" aria-label="Typical bike availability by hour">
-                    @foreach (var bucket in AvailabilityProfile.OrderBy(item => item.Hour))
-                    {
-                        <div class="availability-column @(IsCurrentHour(bucket.Hour) ? "current" : string.Empty)"
-                             title="@GetAvailabilityLabel(bucket)"
-                             aria-label="@GetAvailabilityLabel(bucket)">
-                            <div class="availability-bar-track">
-                                <div class="availability-bar" style="@GetBarStyle(bucket)"></div>
-                            </div>
-                            <div class="availability-hour">@bucket.Hour.ToString("00", CultureInfo.InvariantCulture)</div>
-                        </div>
-                    }
-                </div>
-            </div>
+            <div class="availability-empty">No availability history yet.</div>
         }
     </div>
 
@@ -76,52 +88,137 @@
         }
     </div>
 
-    <!-- Popular destinations -->
+    <!-- Monthly stats section (lazy-loaded) -->
     <div class="detail-card">
-        <h4>Popular Destinations</h4>
-        @if (IsLoadingHistory)
+        <h4>
+            <button class="stats-toggle" @onclick="ToggleMonthlyStats">
+                @(_showMonthlyStats ? "▾" : "▸") Monthly Stats
+            </button>
+        </h4>
+
+        @if (_showMonthlyStats)
         {
-            <div class="loading-spinner" style="width:24px;height:24px;border-width:3px;margin:12px auto;"></div>
-        }
-        else if (History.Count == 0)
-        {
-            <div style="color:var(--text-secondary);font-size:13px;">No trip history available yet.</div>
-        }
-        else
-        {
-            <ul class="destination-list">
-                @foreach (var h in History.Take(10))
-                {
-                    <li class="destination-item">
-                        <div class="destination-icon">&#128205;</div>
-                        <div class="destination-info">
-                            <div class="destination-name">@h.ArrivalStationName</div>
-                            <div class="destination-meta">
-                                @h.TripCount trips &middot; avg @h.AverageDurationFormatted
-                                @if (h.AverageDistanceMetres > 0)
-                                {
-                                    <text> &middot; @((h.AverageDistanceMetres / 1000.0).ToString("0.1")) km</text>
-                                }
+            @if (IsLoadingStatistics)
+            {
+                <div class="loading-spinner" style="width:24px;height:24px;border-width:3px;margin:12px auto;"></div>
+            }
+            else if (Statistics is not null)
+            {
+                <div class="stats-month">@FormatMonth(Statistics.Month)</div>
+
+                <!-- Day type toggle -->
+                <div class="day-type-toggle" role="group" aria-label="Day type filter">
+                    <button class="@GetDayTypeClass(DayType.All)" @onclick="() => SetDayType(DayType.All)">All days</button>
+                    <button class="@GetDayTypeClass(DayType.Weekday)" @onclick="() => SetDayType(DayType.Weekday)">Weekdays</button>
+                    <button class="@GetDayTypeClass(DayType.Weekend)" @onclick="() => SetDayType(DayType.Weekend)">Weekends</button>
+                </div>
+
+                <!-- Demand chart -->
+                <div class="demand-chart-wrapper">
+                    <div class="demand-chart" role="img" aria-label="Departures and arrivals by hour">
+                        @{
+                            var departures = GetDepartures();
+                            var arrivals = GetArrivals();
+                            var maxDemand = Math.Max(1, Math.Max(departures.Max(), arrivals.Max()));
+                        }
+                        @for (var hour = 0; hour < 24; hour++)
+                        {
+                            var depHeight = Math.Max(4.0, (double)departures[hour] / maxDemand * 100.0);
+                            var arrHeight = Math.Max(4.0, (double)arrivals[hour] / maxDemand * 100.0);
+                            <div class="demand-column" title="@hour:00 — @departures[hour] dep, @arrivals[hour] arr">
+                                <div class="demand-bars">
+                                    <div class="demand-bar departure" style="height:@F(depHeight)%;"></div>
+                                    <div class="demand-bar arrival" style="height:@F(arrHeight)%;"></div>
+                                </div>
+                                <div class="demand-hour">@hour.ToString("00", InvariantCulture)</div>
                             </div>
-                        </div>
-                    </li>
+                        }
+                    </div>
+                </div>
+                <div class="demand-legend">
+                    <span class="legend-dot departure"></span> Departures
+                    <span class="legend-dot arrival"></span> Arrivals
+                </div>
+
+                <!-- Destinations list -->
+                @if (Destinations.Count > 0)
+                {
+                    <h4 style="margin-top:16px;">Popular Destinations</h4>
+                    <ul class="destination-list">
+                        @foreach (var d in Destinations.Take(15))
+                        {
+                            <li class="destination-item">
+                                <div class="destination-icon">&#128205;</div>
+                                <div class="destination-info">
+                                    <div class="destination-name">@ResolveStationName(d.ArrivalStationId)</div>
+                                    <div class="destination-meta">
+                                        @d.TripCount trips &middot; avg @d.AverageDurationFormatted
+                                        @if (d.AverageDistanceMetres > 0)
+                                        {
+                                            <text> &middot; @((d.AverageDistanceMetres / 1000.0).ToString("0.1")) km</text>
+                                        }
+                                    </div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
                 }
-            </ul>
+            }
+            else
+            {
+                <div style="color:var(--text-secondary);font-size:13px;">No monthly statistics available yet.</div>
+            }
         }
     </div>
 </div>
 
 @code {
     [Parameter] public required BikeStation Station { get; set; }
-    [Parameter] public List<StationHistory> History { get; set; } = [];
-    [Parameter] public bool IsLoadingHistory { get; set; }
-    [Parameter] public List<HourlyAvailability> AvailabilityProfile { get; set; } = [];
-    [Parameter] public bool IsLoadingAvailability { get; set; }
+    [Parameter] public List<DestinationRow> Destinations { get; set; } = [];
+    [Parameter] public bool IsLoadingStatistics { get; set; }
+    [Parameter] public MonthlyStationStatistics? Statistics { get; set; }
     [Parameter] public AvailabilityTrend Trend { get; set; }
     [Parameter] public List<int> Sparkline { get; set; } = [];
+    [Parameter] public int[] SnapshotCounts { get; set; } = [];
+    [Parameter] public IReadOnlyList<DateTime> Timestamps { get; set; } = [];
+    [Parameter] public Func<int, bool>? IsGap { get; set; }
+    [Parameter] public List<BikeStation> AllStations { get; set; } = [];
     [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnToggleMonthlyStats { get; set; }
 
     private static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
+    private bool _showMonthlyStats;
+    private DayType _selectedDayType = DayType.All;
+
+    private enum DayType { All, Weekday, Weekend }
+
+    private async Task ToggleMonthlyStats()
+    {
+        _showMonthlyStats = !_showMonthlyStats;
+        if (_showMonthlyStats)
+        {
+            await OnToggleMonthlyStats.InvokeAsync();
+        }
+    }
+
+    private void SetDayType(DayType dayType) => _selectedDayType = dayType;
+
+    private int[] GetDepartures() => _selectedDayType switch
+    {
+        DayType.Weekday => Statistics?.Demand.WeekdayDeparturesByHour ?? [],
+        DayType.Weekend => Statistics?.Demand.WeekendDeparturesByHour ?? [],
+        _ => Statistics?.Demand.DeparturesByHour ?? []
+    };
+
+    private int[] GetArrivals() => _selectedDayType switch
+    {
+        DayType.Weekday => Statistics?.Demand.WeekdayArrivalsByHour ?? [],
+        DayType.Weekend => Statistics?.Demand.WeekendArrivalsByHour ?? [],
+        _ => Statistics?.Demand.ArrivalsByHour ?? []
+    };
+
+    private string GetDayTypeClass(DayType dayType) =>
+        _selectedDayType == dayType ? "day-type-btn active" : "day-type-btn";
 
     private string GetSparklinePoints()
     {
@@ -133,22 +230,102 @@
         var step = width / (Sparkline.Count - 1);
 
         return string.Join(" ", Sparkline.Select((v, i) =>
-            $"{(i * step).ToString("0.1", System.Globalization.CultureInfo.InvariantCulture)},{(height - (double)v / max * height).ToString("0.1", System.Globalization.CultureInfo.InvariantCulture)}"
+            $"{F(i * step)},{F(height - (double)v / max * height)}"
         ));
     }
 
-    private string GetBarStyle(HourlyAvailability bucket)
+    // --- Snapshot chart helpers ---
+    private double _chartMaxY = 0;
+    private double ChartMaxY
     {
-        var max = AvailabilityProfile.Count == 0 ? 0 : AvailabilityProfile.Max(item => item.AverageBikesAvailable);
-        var heightPercentage = max <= 0
-            ? 6.0
-            : Math.Max(6.0, bucket.AverageBikesAvailable / max * 100.0);
-
-        return $"height: {heightPercentage.ToString("0.##", InvariantCulture)}%;";
+        get
+        {
+            if (_chartMaxY == 0 && SnapshotCounts.Length > 0)
+                _chartMaxY = Math.Max(Station.Capacity, SnapshotCounts.Max());
+            return _chartMaxY > 0 ? _chartMaxY : 1;
+        }
     }
 
-    private static bool IsCurrentHour(int hour) => DateTime.Now.Hour == hour;
+    private double GetChartX(int index)
+    {
+        if (SnapshotCounts.Length <= 1) return 0;
+        return 400.0 * index / (SnapshotCounts.Length - 1);
+    }
 
-    private static string GetAvailabilityLabel(HourlyAvailability bucket) =>
-        $"{bucket.Hour.ToString("00", InvariantCulture)}:00 average {bucket.AverageBikesAvailable.ToString("0.0", InvariantCulture)} bikes";
+    private double GetChartY(int count) =>
+        140.0 - (count / ChartMaxY * 130.0) + 5;
+
+    private record AreaSegment(string Path, string LinePoints, string CssClass);
+
+    private List<AreaSegment> GetAreaSegments()
+    {
+        var segments = new List<AreaSegment>();
+        var startIdx = 0;
+
+        for (var i = 0; i <= SnapshotCounts.Length; i++)
+        {
+            var isEnd = i == SnapshotCounts.Length;
+            var isGapHere = !isEnd && i > 0 && (IsGap?.Invoke(i) ?? false);
+
+            if (isEnd || isGapHere)
+            {
+                if (i > startIdx)
+                    segments.Add(BuildSegment(startIdx, isGapHere ? i - 1 : i - 1));
+                startIdx = i;
+            }
+        }
+
+        return segments;
+    }
+
+    private AreaSegment BuildSegment(int from, int to)
+    {
+        var points = new List<string>();
+        var linePoints = new List<string>();
+
+        for (var i = from; i <= to; i++)
+        {
+            var x = GetChartX(i);
+            var y = GetChartY(SnapshotCounts[i]);
+            points.Add($"{F(x)},{F(y)}");
+            linePoints.Add($"{F(x)},{F(y)}");
+        }
+
+        // Determine colour class based on average ratio
+        var avgRatio = to >= from
+            ? Enumerable.Range(from, to - from + 1)
+                .Average(i => Station.Capacity > 0 ? (double)SnapshotCounts[i] / Station.Capacity : 0)
+            : 0;
+
+        var cssClass = avgRatio switch
+        {
+            < 0.1 => "zone-red",
+            < 0.3 => "zone-amber",
+            _ => "zone-green"
+        };
+
+        // Build closed area path
+        var firstX = F(GetChartX(from));
+        var lastX = F(GetChartX(to));
+        var baseline = F(140.0 + 5);
+        var pathD = $"M {firstX},{baseline} L {string.Join(" L ", points)} L {lastX},{baseline} Z";
+
+        return new AreaSegment(pathD, string.Join(" ", linePoints), cssClass);
+    }
+
+    private string ResolveStationName(string stationId)
+    {
+        var station = AllStations.FirstOrDefault(s =>
+            s.Id.Equals(stationId, StringComparison.OrdinalIgnoreCase));
+        return station?.Name ?? stationId;
+    }
+
+    private static string FormatMonth(string month)
+    {
+        if (DateTime.TryParseExact(month, "yyyy-MM", InvariantCulture, DateTimeStyles.None, out var date))
+            return date.ToString("MMMM yyyy", InvariantCulture);
+        return month;
+    }
+
+    private static string F(double value) => value.ToString("0.1", InvariantCulture);
 }

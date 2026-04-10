@@ -432,7 +432,149 @@ html, body {
     stroke-width: 2;
 }
 
-/* ===== Availability chart ===== */
+/* ===== Snapshot availability chart ===== */
+.snapshot-chart-wrapper {
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.snapshot-chart {
+    width: 100%;
+    height: 160px;
+    display: block;
+}
+
+.snapshot-chart .capacity-line {
+    stroke: var(--text-secondary);
+    stroke-width: 1;
+    stroke-dasharray: 6 4;
+    opacity: 0.5;
+}
+
+.snapshot-chart .zone-green { fill: rgba(56, 142, 60, 0.18); }
+.snapshot-chart .zone-amber { fill: rgba(245, 124, 0, 0.18); }
+.snapshot-chart .zone-red { fill: rgba(211, 47, 47, 0.18); }
+
+.snapshot-chart polyline.snapshot-line { fill: none; stroke-width: 2; }
+.snapshot-chart polyline.zone-green { stroke: #388e3c; }
+.snapshot-chart polyline.zone-amber { stroke: #f57c00; }
+.snapshot-chart polyline.zone-red { stroke: #d32f2f; }
+
+.snapshot-chart .latest-dot { fill: var(--primary); }
+.snapshot-chart .latest-label {
+    fill: var(--text);
+    font-size: 11px;
+    text-anchor: middle;
+    font-weight: 600;
+}
+
+/* ===== Monthly stats ===== */
+.stats-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.stats-month {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.day-type-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.day-type-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.day-type-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* ===== Demand chart ===== */
+.demand-chart-wrapper {
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.demand-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    min-width: 320px;
+    height: 120px;
+}
+
+.demand-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.demand-bars {
+    width: 100%;
+    height: 96px;
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+}
+
+.demand-bar {
+    flex: 1;
+    border-radius: 4px 4px 0 0;
+    min-height: 2px;
+}
+
+.demand-bar.departure { background: var(--primary); opacity: 0.75; }
+.demand-bar.arrival { background: #f57c00; opacity: 0.75; }
+
+.demand-hour {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.demand-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.legend-dot.departure { background: var(--primary); }
+.legend-dot.arrival { background: #f57c00; }
+
+/* ===== Availability chart (legacy placeholder removed) ===== */
 .availability-legend,
 .availability-empty {
     color: var(--text-secondary);
@@ -441,62 +583,6 @@ html, body {
 
 .availability-legend {
     margin-bottom: 10px;
-}
-
-.availability-chart-wrapper {
-    overflow-x: auto;
-    padding-bottom: 4px;
-}
-
-.availability-chart {
-    display: flex;
-    align-items: flex-end;
-    gap: 4px;
-    min-width: 320px;
-    height: 160px;
-}
-
-.availability-column {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-}
-
-.availability-bar-track {
-    width: 100%;
-    height: 132px;
-    padding: 3px;
-    display: flex;
-    align-items: flex-end;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--surface) 78%, var(--border));
-}
-
-.availability-bar {
-    width: 100%;
-    border-radius: 7px 7px 4px 4px;
-    background: color-mix(in srgb, var(--primary) 60%, var(--primary-light));
-}
-
-.availability-hour {
-    font-size: 10px;
-    color: var(--text-secondary);
-}
-
-.availability-column.current .availability-bar-track {
-    background: color-mix(in srgb, var(--primary-light) 45%, var(--surface));
-}
-
-.availability-column.current .availability-bar {
-    background: var(--primary);
-}
-
-.availability-column.current .availability-hour {
-    color: var(--primary-dark);
-    font-weight: 700;
 }
 
 /* ===== Destination list ===== */
@@ -539,6 +625,11 @@ html, body {
 .destination-meta {
     color: var(--text-secondary);
     font-size: 12px;
+}
+
+/* ===== Destination routes (map polylines) ===== */
+.destination-route {
+    stroke-linecap: round;
 }
 
 /* ===== Buttons ===== */
