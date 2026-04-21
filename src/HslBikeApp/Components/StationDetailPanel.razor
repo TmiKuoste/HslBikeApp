@@ -156,7 +156,7 @@
                                         @destination.TripCount trips &middot; avg @destination.AverageDurationFormatted
                                         @if (destination.AverageDistanceMetres > 0)
                                         {
-                                            <text> &middot; @((destination.AverageDistanceMetres / 1000.0).ToString("0.1")) km</text>
+                                            <text> &middot; @((destination.AverageDistanceMetres / 1000.0).ToString("0.0", InvariantCulture)) km</text>
                                         }
                                     </div>
                                 </div>
@@ -221,24 +221,9 @@
     private string GetDayTypeClass(DayType dayType) =>
         _selectedDayType == dayType ? "day-type-btn active" : "day-type-btn";
 
-    protected override void OnParametersSet()
-    {
-        // Reset cached chart maximum so a newly selected station's capacity and counts
-        // are used. A stale _chartMaxY from a previous station pushes y-coordinates
-        // outside the SVG viewBox, causing all data segments to be invisible.
-        _chartMaxY = 0;
-    }
-
-    private double _chartMaxY;
-    private double ChartMaxY
-    {
-        get
-        {
-            if (_chartMaxY == 0 && SnapshotCounts.Length > 0)
-                _chartMaxY = Math.Max(Station.Capacity, SnapshotCounts.Max());
-            return _chartMaxY > 0 ? _chartMaxY : 1;
-        }
-    }
+    private double ChartMaxY => SnapshotCounts.Length > 0
+        ? Math.Max(Station.Capacity > 0 ? Station.Capacity : 1, SnapshotCounts.Max())
+        : 1;
 
     private double GetChartX(int index)
     {
@@ -319,5 +304,5 @@
         return month;
     }
 
-    private static string F(double value) => value.ToString("0.1", InvariantCulture);
+    private static string F(double value) => value.ToString("0.##", InvariantCulture);
 }
