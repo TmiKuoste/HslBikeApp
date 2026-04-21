@@ -221,6 +221,14 @@
     private string GetDayTypeClass(DayType dayType) =>
         _selectedDayType == dayType ? "day-type-btn active" : "day-type-btn";
 
+    protected override void OnParametersSet()
+    {
+        // Reset cached chart maximum so a newly selected station's capacity and counts
+        // are used. A stale _chartMaxY from a previous station pushes y-coordinates
+        // outside the SVG viewBox, causing all data segments to be invisible.
+        _chartMaxY = 0;
+    }
+
     private double _chartMaxY;
     private double ChartMaxY
     {

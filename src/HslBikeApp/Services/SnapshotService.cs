@@ -109,18 +109,20 @@ public class SnapshotService
 
     private int GetTrendStartIndex(int length, IReadOnlyList<DateTime> timestamps)
     {
-        var shortGapThresholdMinutes = Math.Min(5, Math.Max(1, IntervalMinutes));
-        var lastSnapshotIndex = Math.Min(_historicalPointCount, length) - 1;
+        // Target a window of roughly one snapshot interval to give a meaningful trend.
+        // Using 1.2× the interval accounts for the live-refresh gap (e.g. ~18 min for a
+        // 15-min interval), avoiding a misleadingly short window when the live point
+        // arrives only a few minutes after the last historical snapshot.
+        var targetWindowMinutes = Math.Max(IntervalMinutes, 1) * 1.2;
+        var end = timestamps[length - 1];
 
-        if (lastSnapshotIndex >= 0 && length > lastSnapshotIndex + 1)
+        for (var i = length - 2; i >= 0; i--)
         {
-            var gapSinceLastSnapshot = (timestamps[length - 1] - timestamps[lastSnapshotIndex]).TotalMinutes;
-            if (gapSinceLastSnapshot > 0 && gapSinceLastSnapshot <= shortGapThresholdMinutes)
-                return lastSnapshotIndex;
+            if ((end - timestamps[i]).TotalMinutes >= targetWindowMinutes)
+                return i;
         }
 
-        var windowSize = Math.Min(6, length);
-        return length - windowSize;
+        return 0;
     }
 
     /// <summary>
