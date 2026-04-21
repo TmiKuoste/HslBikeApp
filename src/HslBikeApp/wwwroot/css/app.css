@@ -383,8 +383,28 @@ html, body {
 }
 
 /* ===== Snapshot availability chart ===== */
+.snapshot-chart-layout {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.snapshot-y-axis {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 3px 0 20px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 18px;
+    text-align: right;
+}
+
 .snapshot-chart-wrapper {
-    overflow-x: auto;
+    flex: 1;
+    min-width: 0;
+    position: relative;
     padding-bottom: 4px;
 }
 
@@ -392,6 +412,20 @@ html, body {
     width: 100%;
     height: 160px;
     display: block;
+}
+
+.snapshot-x-axis {
+    position: relative;
+    height: 14px;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.snapshot-x-axis span {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
 }
 
 .snapshot-chart .capacity-line {
@@ -411,12 +445,6 @@ html, body {
 .snapshot-chart polyline.zone-red { stroke: #d32f2f; }
 
 .snapshot-chart .latest-dot { fill: var(--primary); }
-.snapshot-chart .latest-label {
-    fill: var(--text);
-    font-size: 11px;
-    text-anchor: middle;
-    font-weight: 600;
-}
 
 /* ===== Monthly stats ===== */
 .stats-toggle {

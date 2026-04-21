@@ -47,34 +47,38 @@
 
         @if (SnapshotCounts.Length > 1 && Timestamps.Count > 1)
         {
-            <div class="availability-legend">
-                @Timestamps[0].ToLocalTime().ToString("HH:mm", InvariantCulture) &ndash;
-                @Timestamps[^1].ToLocalTime().ToString("HH:mm", InvariantCulture)
-                &middot; @Timestamps.Count points
-            </div>
-            <div class="snapshot-chart-wrapper">
-                <svg class="snapshot-chart" viewBox="0 0 400 160" preserveAspectRatio="none"
-                     aria-label="Bike availability over time">
-                    <line class="capacity-line"
-                          x1="0" y1="@GetChartY(Station.Capacity)"
-                          x2="400" y2="@GetChartY(Station.Capacity)" />
+            <div class="availability-legend">Last @FormatDuration(Timestamps[^1] - Timestamps[0])</div>
 
-                    @{
-                        var segments = GetAreaSegments();
-                    }
-                    @foreach (var segment in segments)
-                    {
-                        <path class="@segment.CssClass" d="@segment.Path" />
-                        <polyline class="snapshot-line @segment.CssClass" points="@segment.LinePoints" />
-                    }
+            <div class="snapshot-chart-layout">
+                <div class="snapshot-y-axis">
+                    <span>@((int)Math.Ceiling(ChartMaxY))</span>
+                    <span>@((int)Math.Ceiling(ChartMaxY) / 2)</span>
+                    <span>0</span>
+                </div>
+                <div class="snapshot-chart-wrapper">
+                    <svg class="snapshot-chart" viewBox="0 0 400 160" preserveAspectRatio="none"
+                         aria-label="Bike availability over time">
+                        <line class="capacity-line"
+                              x1="0" y1="@GetChartY(Station.Capacity)"
+                              x2="400" y2="@GetChartY(Station.Capacity)" />
 
-                    @{
-                        var lastX = GetChartX(SnapshotCounts.Length - 1);
-                        var lastY = GetChartY(SnapshotCounts[^1]);
-                    }
-                    <circle class="latest-dot" cx="@F(lastX)" cy="@F(lastY)" r="4" />
-                    <text class="latest-label" x="@F(lastX)" y="@F(lastY - 10)">@SnapshotCounts[^1]</text>
-                </svg>
+                        @foreach (var segment in GetAreaSegments())
+                        {
+                            <path class="@segment.CssClass" d="@segment.Path" />
+                            <polyline class="snapshot-line @segment.CssClass" points="@segment.LinePoints" />
+                        }
+
+                        <circle class="latest-dot"
+                                cx="@F(GetChartX(SnapshotCounts.Length - 1))"
+                                cy="@F(GetChartY(SnapshotCounts[^1]))" r="4" />
+                    </svg>
+                    <div class="snapshot-x-axis">
+                        @foreach (var tick in BuildXAxisTicks())
+                        {
+                            <span style="left:@F(tick.Percent)%;">@tick.Label</span>
+                        }
+                    </div>
+                </div>
             </div>
         }
         else
@@ -302,6 +306,57 @@
         if (DateTime.TryParseExact(month, "yyyy-MM", InvariantCulture, DateTimeStyles.None, out var date))
             return date.ToString("MMMM yyyy", InvariantCulture);
         return month;
+    }
+
+    private static string FormatDuration(TimeSpan span)
+    {
+        var totalMinutes = Math.Max(0, (int)Math.Round(span.TotalMinutes));
+        if (totalMinutes < 60) return $"{totalMinutes} min";
+
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        return minutes == 0 ? $"{hours} h" : $"{hours} h {minutes} min";
+    }
+
+    private record XAxisTick(double Percent, string Label);
+
+    private List<XAxisTick> BuildXAxisTicks()
+    {
+        var ticks = new List<XAxisTick>();
+        if (Timestamps.Count < 2) return ticks;
+
+        var latest = Timestamps[^1];
+        var earliest = Timestamps[0];
+        var totalMinutes = (latest - earliest).TotalMinutes;
+        if (totalMinutes <= 0) return ticks;
+
+        // Always anchor the right edge at "now".
+        ticks.Add(new XAxisTick(100, "now"));
+
+        // Pick a step so we get roughly 3-5 ticks across the chart.
+        var totalHours = totalMinutes / 60.0;
+        var stepHours = totalHours switch
+        {
+            <= 2 => 0.5,
+            <= 6 => 1,
+            <= 12 => 2,
+            <= 24 => 4,
+            _ => 6
+        };
+
+        for (var hoursAgo = stepHours; hoursAgo <= totalHours + 0.01; hoursAgo += stepHours)
+        {
+            var minutesAgo = hoursAgo * 60;
+            var percent = 100.0 - (minutesAgo / totalMinutes * 100.0);
+            if (percent < 2) break;
+
+            var label = stepHours < 1
+                ? $"{(int)Math.Round(minutesAgo)} min ago"
+                : $"{hoursAgo:0.#} h ago";
+            ticks.Add(new XAxisTick(percent, label));
+        }
+
+        return ticks;
     }
 
     private static string F(double value) => value.ToString("0.##", InvariantCulture);
