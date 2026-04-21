@@ -401,9 +401,9 @@ html, body {
     opacity: 0.5;
 }
 
-.snapshot-chart .zone-green { fill: rgba(56, 142, 60, 0.18); }
-.snapshot-chart .zone-amber { fill: rgba(245, 124, 0, 0.18); }
-.snapshot-chart .zone-red { fill: rgba(211, 47, 47, 0.18); }
+.snapshot-chart .zone-green { fill: rgba(56, 142, 60, 0.35); }
+.snapshot-chart .zone-amber { fill: rgba(245, 124, 0, 0.35); }
+.snapshot-chart .zone-red { fill: rgba(211, 47, 47, 0.35); }
 
 .snapshot-chart polyline.snapshot-line { fill: none; stroke-width: 2; }
 .snapshot-chart polyline.zone-green { stroke: #388e3c; }
