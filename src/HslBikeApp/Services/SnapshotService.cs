@@ -7,6 +7,7 @@ public class SnapshotService
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private int _historicalPointCount;
 
     /// Parsed per-station series, populated after <see cref="FetchSnapshotsAsync"/>.
     private IReadOnlyList<StationCountSeries> _stationSeries = [];
@@ -35,6 +36,7 @@ public class SnapshotService
 
             _timeSeries = timeSeries;
             _stationSeries = timeSeries.ParseRows();
+            _historicalPointCount = timeSeries.Timestamps.Count;
             return timeSeries;
         }
         catch (HttpRequestException)
@@ -62,14 +64,15 @@ public class SnapshotService
 
     /// <summary>
     /// Derives an <see cref="AvailabilityTrend"/> for a station from recent snapshot data.
-    /// Uses the last 6 data points (or all if fewer).
     /// </summary>
     public AvailabilityTrend GetTrend(string stationId) =>
         GetTrendSummary(stationId).Trend;
 
     /// <summary>
     /// Returns a trend together with the signed bike delta and analysed time window.
-    /// Uses the last 6 data points (or all if fewer).
+    /// If recent live data is only a few minutes newer than the last historical snapshot,
+    /// compares that last snapshot directly against the latest live value.
+    /// Otherwise uses the last 6 points (or all if fewer).
     /// </summary>
     public TrendSummary GetTrendSummary(string stationId)
     {
@@ -78,13 +81,12 @@ public class SnapshotService
         if (counts.Length < 2 || timestamps.Count < 2)
             return new TrendSummary(AvailabilityTrend.Stable, 0, 0);
 
-        var len = Math.Min(counts.Length, timestamps.Count);
-        var windowSize = Math.Min(6, len);
-        var startIndex = len - windowSize;
+        var length = Math.Min(counts.Length, timestamps.Count);
+        var startIndex = GetTrendStartIndex(length, timestamps);
 
         var firstCount = counts[startIndex];
-        var lastCount = counts[len - 1];
-        var timeDifference = timestamps[len - 1] - timestamps[startIndex];
+        var lastCount = counts[length - 1];
+        var timeDifference = timestamps[length - 1] - timestamps[startIndex];
 
         if (timeDifference.TotalMinutes < 1)
             return new TrendSummary(AvailabilityTrend.Stable, 0, 0);
@@ -105,16 +107,20 @@ public class SnapshotService
         return new TrendSummary(trend, deltaBikes, windowMinutes);
     }
 
-    /// <summary>
-    /// Returns the last <paramref name="count"/> bike counts for a station (sparkline data).
-    /// </summary>
-    public List<int> GetSparkline(string stationId, int count = 12)
+    private int GetTrendStartIndex(int length, IReadOnlyList<DateTime> timestamps)
     {
-        var counts = GetStationCounts(stationId);
-        if (counts.Length == 0) return [];
+        var shortGapThresholdMinutes = Math.Min(5, Math.Max(1, IntervalMinutes));
+        var lastSnapshotIndex = Math.Min(_historicalPointCount, length) - 1;
 
-        var start = Math.Max(0, counts.Length - count);
-        return counts[start..].ToList();
+        if (lastSnapshotIndex >= 0 && length > lastSnapshotIndex + 1)
+        {
+            var gapSinceLastSnapshot = (timestamps[length - 1] - timestamps[lastSnapshotIndex]).TotalMinutes;
+            if (gapSinceLastSnapshot > 0 && gapSinceLastSnapshot <= shortGapThresholdMinutes)
+                return lastSnapshotIndex;
+        }
+
+        var windowSize = Math.Min(6, length);
+        return length - windowSize;
     }
 
     /// <summary>
@@ -136,6 +142,7 @@ public class SnapshotService
                 RawRows = rows
             };
             _stationSeries = _timeSeries.ParseRows();
+            _historicalPointCount = 0;
             return;
         }
 
@@ -149,7 +156,7 @@ public class SnapshotService
 
         foreach (var series in _stationSeries)
         {
-            var newCount = bikeCounts.TryGetValue(series.StationId, out var c) ? c : 0;
+            var newCount = bikeCounts.TryGetValue(series.StationId, out var count) ? count : 0;
             var newCounts = new int[series.Counts.Length + 1];
             series.Counts.CopyTo(newCounts, 0);
             newCounts[^1] = newCount;
@@ -157,12 +164,12 @@ public class SnapshotService
             processedIds.Add(series.StationId);
         }
 
-        foreach (var kvp in bikeCounts)
+        foreach (var pair in bikeCounts)
         {
-            if (processedIds.Contains(kvp.Key)) continue;
+            if (processedIds.Contains(pair.Key)) continue;
             var counts = new int[newTimestamps.Count];
-            counts[^1] = kvp.Value;
-            updatedSeries.Add(new StationCountSeries { StationId = kvp.Key, Counts = counts });
+            counts[^1] = pair.Value;
+            updatedSeries.Add(new StationCountSeries { StationId = pair.Key, Counts = counts });
         }
 
         // Cap at 60 data points
@@ -171,11 +178,13 @@ public class SnapshotService
         {
             var skip = newTimestamps.Count - maxPoints;
             newTimestamps = newTimestamps.Skip(skip).ToList();
-            updatedSeries = updatedSeries.Select(s => new StationCountSeries
+            updatedSeries = updatedSeries.Select(series => new StationCountSeries
             {
-                StationId = s.StationId,
-                Counts = s.Counts.Skip(skip).ToArray()
+                StationId = series.StationId,
+                Counts = series.Counts.Skip(skip).ToArray()
             }).ToList();
+
+            _historicalPointCount = Math.Max(0, _historicalPointCount - skip);
         }
 
         _timeSeries = _timeSeries with { Timestamps = newTimestamps };

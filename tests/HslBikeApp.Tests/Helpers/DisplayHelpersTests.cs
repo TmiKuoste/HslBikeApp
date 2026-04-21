@@ -40,12 +40,12 @@ public class DisplayHelpersTests
     }
 
     [Theory]
-    [InlineData(AvailabilityTrend.RapidDecrease, "\u00bb\u00bb", "#d32f2f")]
-    [InlineData(AvailabilityTrend.Decreasing, "\u00bb", "#f57c00")]
-    [InlineData(AvailabilityTrend.Increasing, "\u00ab", "#388e3c")]
-    [InlineData(AvailabilityTrend.RapidIncrease, "\u00ab\u00ab", "#009688")]
+    [InlineData(AvailabilityTrend.RapidDecrease, "\u21ca", "#d32f2f")]
+    [InlineData(AvailabilityTrend.Decreasing, "\u2193", "#f57c00")]
+    [InlineData(AvailabilityTrend.Increasing, "\u2191", "#388e3c")]
+    [InlineData(AvailabilityTrend.RapidIncrease, "\u21c8", "#009688")]
     [InlineData(AvailabilityTrend.Stable, "", "")]
-    public void GetBadge_ReturnsExpectedChevronAndColour(AvailabilityTrend trend, string expectedBadge, string expectedColour)
+    public void GetBadge_ReturnsExpectedArrowAndColour(AvailabilityTrend trend, string expectedBadge, string expectedColour)
     {
         var (badge, colour) = DisplayHelpers.GetBadge(trend);
         Assert.Equal(expectedBadge, badge);
@@ -117,7 +117,7 @@ public class DisplayHelpersTests
     {
         var text = DisplayHelpers.GetTrendText(AvailabilityTrend.Decreasing);
         Assert.Contains("Bikes leaving", text);
-        Assert.StartsWith("\u00bb", text);
+        Assert.StartsWith("\u2193", text);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class DisplayHelpersTests
     {
         var text = DisplayHelpers.GetTrendText(AvailabilityTrend.Increasing);
         Assert.Contains("Bikes arriving", text);
-        Assert.StartsWith("\u00ab", text);
+        Assert.StartsWith("\u2191", text);
     }
 
     [Fact]
@@ -133,6 +133,7 @@ public class DisplayHelpersTests
     {
         var text = DisplayHelpers.GetTrendText(AvailabilityTrend.RapidDecrease);
         Assert.Contains("rapidly", text);
+        Assert.StartsWith("\u21ca", text);
     }
 
     [Fact]
@@ -140,6 +141,7 @@ public class DisplayHelpersTests
     {
         var text = DisplayHelpers.GetTrendText(AvailabilityTrend.RapidIncrease);
         Assert.Contains("rapidly", text);
+        Assert.StartsWith("\u21c8", text);
     }
 
     [Theory]

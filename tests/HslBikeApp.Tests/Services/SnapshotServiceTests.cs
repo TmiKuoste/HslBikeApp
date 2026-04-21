@@ -157,11 +157,9 @@ public class SnapshotServiceTests
     [Fact]
     public void GetTrend_WhenBikesDecreasingRapidly_ReturnsRapidDecrease()
     {
-        // Rate must be <= -2 bikes/min for RapidDecrease
-        // 6 points at 1-min intervals: 20 -> 0 over 5 min = -4 bikes/min
         var timestamps = Enumerable.Range(0, 6)
-            .Select(i => DateTime.UtcNow.AddMinutes(i).ToString("o"));
-        var timestampsJson = "[" + string.Join(",", timestamps.Select(t => $"\"{t}\"")) + "]";
+            .Select(index => DateTime.UtcNow.AddMinutes(index).ToString("o"));
+        var timestampsJson = "[" + string.Join(",", timestamps.Select(timestamp => $"\"{timestamp}\"")) + "]";
         var json = $$"""
             {
               "intervalMinutes": 1,
@@ -178,8 +176,8 @@ public class SnapshotServiceTests
     public void GetTrend_WhenBikesStable_ReturnsStable()
     {
         var timestamps = Enumerable.Range(0, 6)
-            .Select(i => DateTime.UtcNow.AddMinutes(i * 5).ToString("o"));
-        var timestampsJson = "[" + string.Join(",", timestamps.Select(t => $"\"{t}\"")) + "]";
+            .Select(index => DateTime.UtcNow.AddMinutes(index * 5).ToString("o"));
+        var timestampsJson = "[" + string.Join(",", timestamps.Select(timestamp => $"\"{timestamp}\"")) + "]";
         var json = $$"""
             {
               "intervalMinutes": 5,
@@ -205,8 +203,8 @@ public class SnapshotServiceTests
     public void GetTrendSummary_UsesLastSixPointsForWindowAndDelta()
     {
         var timestamps = Enumerable.Range(0, 8)
-            .Select(i => DateTime.UtcNow.AddMinutes(i).ToString("o"));
-        var timestampsJson = "[" + string.Join(",", timestamps.Select(t => $"\"{t}\"")) + "]";
+            .Select(index => DateTime.UtcNow.AddMinutes(index).ToString("o"));
+        var timestampsJson = "[" + string.Join(",", timestamps.Select(timestamp => $"\"{timestamp}\"")) + "]";
         var json = $$"""
             {
               "intervalMinutes": 1,
@@ -217,6 +215,28 @@ public class SnapshotServiceTests
         var service = CreateServiceWithFetch(json);
 
         Assert.Equal(new TrendSummary(AvailabilityTrend.Increasing, 5, 5), service.GetTrendSummary("001"));
+    }
+
+    [Fact]
+    public void GetTrendSummary_WhenLatestLivePointIsWithinShortGap_UsesLastSnapshotToLatestLive()
+    {
+        var now = DateTime.UtcNow;
+        var timestampsJson = $"[\"{now.AddMinutes(-18):o}\",\"{now.AddMinutes(-3):o}\"]";
+        var json = $$"""
+            {
+              "intervalMinutes": 15,
+              "timestamps": {{timestampsJson}},
+              "rows": [["001", 0, 5]]
+            }
+            """;
+        var service = CreateServiceWithFetch(json);
+
+        service.AppendLiveSnapshot(new Dictionary<string, int> { ["001"] = 7 });
+
+        var summary = service.GetTrendSummary("001");
+        Assert.Equal(AvailabilityTrend.Increasing, summary.Trend);
+        Assert.Equal(2, summary.DeltaBikes);
+        Assert.InRange(summary.WindowMinutes, 3, 4);
     }
 
     [Fact]
@@ -234,41 +254,6 @@ public class SnapshotServiceTests
         var service = CreateServiceWithFetch(json);
 
         Assert.Equal(new TrendSummary(AvailabilityTrend.Stable, 0, 0), service.GetTrendSummary("001"));
-    }
-
-    #endregion
-
-    #region GetSparkline
-
-    [Fact]
-    public void GetSparkline_ReturnsLastNCounts()
-    {
-        var timestamps = Enumerable.Range(0, 15)
-            .Select(i => DateTime.UtcNow.AddMinutes(i * 5).ToString("o"));
-        var timestampsJson = "[" + string.Join(",", timestamps.Select(t => $"\"{t}\"")) + "]";
-        var counts = string.Join(",", Enumerable.Range(0, 15));
-        var json = $$"""
-            {
-              "intervalMinutes": 5,
-              "timestamps": {{timestampsJson}},
-              "rows": [["001", {{counts}}]]
-            }
-            """;
-        var service = CreateServiceWithFetch(json);
-
-        var sparkline = service.GetSparkline("001", 5);
-
-        Assert.Equal(5, sparkline.Count);
-        Assert.Equal([10, 11, 12, 13, 14], sparkline);
-    }
-
-    [Fact]
-    public void GetSparkline_WhenNoData_ReturnsEmpty()
-    {
-        var service = CreateServiceWithFetch(
-            """{"intervalMinutes":15,"timestamps":[],"rows":[]}""");
-
-        Assert.Empty(service.GetSparkline("001"));
     }
 
     #endregion
