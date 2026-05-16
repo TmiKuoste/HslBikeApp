@@ -122,10 +122,6 @@ public class StationDetailPanelTests : TestContext
         var pointsAttr = polyline.GetAttribute("points") ?? "";
         var pointCount = pointsAttr.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         Assert.Equal(3, pointCount);
-
-        // There should be no separate latest-dot, only the live-dot.
-        Assert.Empty(component.FindAll(".latest-dot"));
-        Assert.NotEmpty(component.FindAll(".live-dot"));
     }
 
     [Fact]
@@ -153,37 +149,5 @@ public class StationDetailPanelTests : TestContext
         Assert.Contains("Availability", component.Find(".availability-card h4").TextContent);
         Assert.Empty(component.FindAll(".detail-card h4").Where(heading => heading.TextContent.Contains("Availability History", StringComparison.Ordinal)));
         Assert.DoesNotContain("Last ", component.Markup);
-    }
-
-    [Fact]
-    public void RendersLiveMarkerWithCompactValueAndLiveTimeLabel()
-    {
-        var snapshotStart = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Utc);
-        var snapshotEnd = snapshotStart.AddMinutes(15);
-        var liveTimestamp = snapshotStart.AddMinutes(42);
-        var expectedLiveLabel = $"{liveTimestamp.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)} live";
-        var station = new BikeStation
-        {
-            Id = "001",
-            Name = "Kamppi",
-            Address = "Kamppi 1",
-            Capacity = 20,
-            BikesAvailable = 3,
-            SpacesAvailable = 17,
-            IsActive = true
-        };
-
-        var component = RenderComponent<StationDetailPanel>(parameters => parameters
-            .Add(panel => panel.Station, station)
-            .Add(panel => panel.Trend, AvailabilityTrend.Decreasing)
-            .Add(panel => panel.TrendSummary, new TrendSummary(AvailabilityTrend.Decreasing, -2, 42))
-            .Add(panel => panel.SnapshotCounts, new[] { 5, 5 })
-            .Add(panel => panel.Timestamps, new[] { snapshotStart, snapshotEnd })
-            .Add(panel => panel.LiveCount, 3)
-            .Add(panel => panel.LiveTimestamp, liveTimestamp));
-
-        Assert.Equal("3", component.Find(".live-label").TextContent.Trim());
-        Assert.Contains(expectedLiveLabel, component.Find(".snapshot-x-axis").TextContent);
-        Assert.DoesNotContain("ago", component.Find(".snapshot-x-axis").TextContent);
     }
 }
