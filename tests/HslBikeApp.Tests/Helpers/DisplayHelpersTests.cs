@@ -83,11 +83,11 @@ public class DisplayHelpersTests
     }
 
     [Fact]
-    public void FormatTrendExplanation_WhenStable_ReturnsNoChangeText()
+    public void FormatTrendExplanation_WhenStable_ReturnsNull()
     {
         var summary = new TrendSummary(AvailabilityTrend.Stable, 0, 15);
 
-        Assert.Equal("No change in the last 15 min", DisplayHelpers.FormatTrendExplanation(summary));
+        Assert.Null(DisplayHelpers.FormatTrendExplanation(summary));
     }
 
     [Fact]

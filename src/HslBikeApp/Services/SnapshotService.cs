@@ -7,6 +7,7 @@ public class SnapshotService
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly TrendThresholds _trendThresholds;
 
     /// Parsed per-station series, populated after <see cref="FetchSnapshotsAsync"/>.
     private IReadOnlyList<StationCountSeries> _stationSeries = [];
@@ -14,10 +15,11 @@ public class SnapshotService
     /// Raw time-series metadata, populated after <see cref="FetchSnapshotsAsync"/>.
     private SnapshotTimeSeries? _timeSeries;
 
-    public SnapshotService(HttpClient http, string baseUrl)
+    public SnapshotService(HttpClient http, string baseUrl, TrendThresholds? trendThresholds = null)
     {
         _http = http;
         _baseUrl = baseUrl.TrimEnd('/');
+        _trendThresholds = trendThresholds ?? TrendThresholds.Default;
     }
 
     /// <summary>
@@ -108,7 +110,7 @@ public class SnapshotService
             if (counts.Length < 2 || timestamps.Count < 2)
                 return new TrendSummary(AvailabilityTrend.Stable, 0, 0);
 
-            return ComputeTrend(counts[^2], timestamps[^2], counts[^1], timestamps[^1]);
+            return ComputeTrend(counts[^2], timestamps[^2], counts[^1], timestamps[^1], _trendThresholds);
         }
 
         // We have live data
@@ -117,7 +119,7 @@ public class SnapshotService
 
         // Only one snapshot available
         if (counts.Length == 1 || timestamps.Count == 1)
-            return ComputeTrend(sLast, tLast, liveCount.Value, liveTimestamp.Value);
+            return ComputeTrend(sLast, tLast, liveCount.Value, liveTimestamp.Value, _trendThresholds);
 
         var tPrev = timestamps[^2];
         var sPrev = counts[^2];
@@ -132,10 +134,15 @@ public class SnapshotService
             ? tPrev
             : tLast;
 
-        return ComputeTrend(startCount, startTimestamp, liveCount.Value, liveTimestamp.Value);
+        return ComputeTrend(startCount, startTimestamp, liveCount.Value, liveTimestamp.Value, _trendThresholds);
     }
 
-    private static TrendSummary ComputeTrend(int firstCount, DateTime firstTime, int lastCount, DateTime lastTime)
+    private static TrendSummary ComputeTrend(
+        int firstCount,
+        DateTime firstTime,
+        int lastCount,
+        DateTime lastTime,
+        TrendThresholds thresholds)
     {
         var timeDifference = lastTime - firstTime;
         if (timeDifference.TotalMinutes < 1)
@@ -143,14 +150,13 @@ public class SnapshotService
 
         var deltaBikes = lastCount - firstCount;
         var windowMinutes = Math.Max(1, (int)Math.Round(timeDifference.TotalMinutes, MidpointRounding.AwayFromZero));
-        var ratePerMinute = deltaBikes / timeDifference.TotalMinutes;
 
-        var trend = ratePerMinute switch
+        var trend = deltaBikes switch
         {
-            <= -2 => AvailabilityTrend.RapidDecrease,
-            <= -0.5 => AvailabilityTrend.Decreasing,
-            >= 2 => AvailabilityTrend.RapidIncrease,
-            >= 0.5 => AvailabilityTrend.Increasing,
+            var delta when delta <= -thresholds.RapidChangeBikes => AvailabilityTrend.RapidDecrease,
+            var delta when delta <= -thresholds.ChangeBikes => AvailabilityTrend.Decreasing,
+            var delta when delta >= thresholds.RapidChangeBikes => AvailabilityTrend.RapidIncrease,
+            var delta when delta >= thresholds.ChangeBikes => AvailabilityTrend.Increasing,
             _ => AvailabilityTrend.Stable
         };
 

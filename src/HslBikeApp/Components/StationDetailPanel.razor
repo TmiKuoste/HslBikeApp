@@ -17,8 +17,15 @@
         <button class="close-btn" @onclick="OnClose" aria-label="Close station details">&#10005;</button>
     </div>
 
-    <div class="detail-card">
-        <h4>Availability</h4>
+    <div class="detail-card availability-card">
+        <div class="availability-card-header">
+            <h4>Availability</h4>
+            @if (LiveTimestamp is DateTime liveTimestamp)
+            {
+                <span class="availability-updated">Updated @FormatLocalTime(liveTimestamp)</span>
+            }
+        </div>
+
         <div class="chips">
             @if (!Station.IsActive)
             {
@@ -36,19 +43,9 @@
             }
         </div>
 
-        @if (Station.IsActive && trendExplanation is not null)
-        {
-            <div class="trend-explanation">@trendExplanation</div>
-        }
-    </div>
-
-    <div class="detail-card">
-        <h4>Availability History</h4>
 
         @if (SnapshotCounts.Length > 1 && Timestamps.Count > 1)
         {
-            <div class="availability-legend">Last @FormatDuration(Timestamps[^1] - Timestamps[0])</div>
-
             <div class="snapshot-chart-layout">
                 <div class="snapshot-y-axis">
                     <span>@((int)Math.Ceiling(ChartMaxY))</span>
@@ -68,26 +65,11 @@
                             <polyline class="snapshot-line @segment.CssClass" points="@segment.LinePoints" />
                         }
 
-                        <circle class="latest-dot"
-                                cx="@F(GetChartX(SnapshotCounts.Length - 1))"
-                                cy="@F(GetChartY(SnapshotCounts[^1]))" r="4" />
-
-                        @if (LiveCount.HasValue && LiveTimestamp.HasValue && Timestamps.Count >= 1)
-                        {
-                            var liveX = GetLiveChartX();
-                            if (liveX.HasValue)
-                            {
-                                <circle class="live-dot"
-                                        cx="@F(liveX.Value)"
-                                        cy="@F(GetChartY(LiveCount.Value))" r="5"
-                                        aria-label="Live: @LiveCount bikes" />
-                            }
-                        }
-                    </svg>
+                        </svg>
                     <div class="snapshot-x-axis">
                         @foreach (var tick in BuildXAxisTicks())
                         {
-                            <span style="left:@F(tick.Percent)%;">@tick.Label</span>
+                            <span class="@(tick.IsLive ? "x-axis-live" : "")" style="left:@F(tick.Percent)%;">@tick.Label</span>
                         }
                     </div>
                 </div>
@@ -239,14 +221,40 @@
     private string GetDayTypeClass(DayType dayType) =>
         _selectedDayType == dayType ? "day-type-btn active" : "day-type-btn";
 
-    private double ChartMaxY => SnapshotCounts.Length > 0
-        ? Math.Max(Station.Capacity > 0 ? Station.Capacity : 1, SnapshotCounts.Max())
-        : 1;
+    private double ChartMaxY
+    {
+        get
+        {
+            var maxCount = SnapshotCounts.Length > 0 ? SnapshotCounts.Max() : 0;
+            if (LiveCount is int liveCount)
+                maxCount = Math.Max(maxCount, liveCount);
+
+            return Math.Max(Station.Capacity > 0 ? Station.Capacity : 1, maxCount);
+        }
+    }
 
     private double GetChartX(int index)
     {
+        if (Timestamps.Count == SnapshotCounts.Length && index >= 0 && index < Timestamps.Count)
+            return GetChartX(Timestamps[index]) ?? 0;
+
         if (SnapshotCounts.Length <= 1) return 0;
         return 400.0 * index / (SnapshotCounts.Length - 1);
+    }
+
+    private double? GetChartX(DateTime timestamp)
+    {
+        if (Timestamps.Count < 1) return null;
+
+        var earliest = ToUtc(Timestamps[0]);
+        var latest = GetChartEndTimestamp();
+        var totalSpan = (latest - earliest).TotalSeconds;
+        if (totalSpan <= 0) return null;
+
+        var span = (ToUtc(timestamp) - earliest).TotalSeconds;
+        if (span < 0) return null;
+
+        return Math.Clamp(400.0 * span / totalSpan, 0, 398);
     }
 
     private double GetChartY(int count) =>
@@ -259,19 +267,28 @@
     private double? GetLiveChartX()
     {
         if (!LiveTimestamp.HasValue || Timestamps.Count < 1) return null;
+        return GetChartX(LiveTimestamp.Value);
+    }
 
-        var earliest = Timestamps[0];
-        var latest = Timestamps[^1];
-        var totalSpan = (latest - earliest).TotalMinutes;
+    private TimeSpan GetSnapshotInterval()
+    {
+        if (Timestamps.Count < 2) return TimeSpan.FromMinutes(15);
+        var totalSpan = (ToUtc(Timestamps[^1]) - ToUtc(Timestamps[0])).TotalMinutes;
+        var avgMinutes = totalSpan / (Timestamps.Count - 1);
+        return TimeSpan.FromMinutes(Math.Max(1, avgMinutes));
+    }
 
-        // Extend the axis to include the live point beyond the last snapshot
-        var liveSpan = (LiveTimestamp.Value - earliest).TotalMinutes;
-        if (liveSpan <= 0) return null;
+    private DateTime GetChartEndTimestamp()
+    {
+        var latestSnapshot = ToUtc(Timestamps[^1]);
+        var interval = GetSnapshotInterval();
 
-        var fullSpan = Math.Max(totalSpan, liveSpan);
-        if (fullSpan <= 0) return null;
+        if (LiveTimestamp is not DateTime liveTimestamp)
+            return latestSnapshot + interval;
 
-        return 400.0 * liveSpan / fullSpan;
+        var liveUtc = ToUtc(liveTimestamp);
+        // Pad one interval beyond the live point so the dot is not against the right edge.
+        return (liveUtc > latestSnapshot ? liveUtc : latestSnapshot) + interval;
     }
 
     private record AreaSegment(string Path, string LinePoints, string CssClass);
@@ -289,7 +306,10 @@
             if (isEnd || isGapHere)
             {
                 if (index > startIndex)
-                    segments.Add(BuildSegment(startIndex, index - 1));
+                {
+                    var isLastSegment = isEnd;
+                    segments.Add(BuildSegment(startIndex, index - 1, isLastSegment));
+                }
                 startIndex = index;
             }
         }
@@ -297,7 +317,7 @@
         return segments;
     }
 
-    private AreaSegment BuildSegment(int from, int to)
+    private AreaSegment BuildSegment(int from, int to, bool extendToLive = false)
     {
         var points = new List<string>();
         var linePoints = new List<string>();
@@ -310,24 +330,26 @@
             linePoints.Add($"{F(x)},{F(y)}");
         }
 
-        var averageRatio = to >= from
-            ? Enumerable.Range(from, to - from + 1)
-                .Average(index => Station.Capacity > 0 ? (double)SnapshotCounts[index] / Station.Capacity : 0)
-            : 0;
-
-        var cssClass = averageRatio switch
+        // Extend the final segment to include the live data point so the line
+        // runs continuously from the last snapshot all the way to the live dot.
+        if (extendToLive && LiveCount.HasValue && LiveTimestamp.HasValue)
         {
-            < 0.1 => "zone-red",
-            < 0.3 => "zone-amber",
-            _ => "zone-green"
-        };
+            var liveX = GetLiveChartX();
+            if (liveX.HasValue)
+            {
+                var liveY = GetChartY(LiveCount.Value);
+                var livePoint = $"{F(liveX.Value)},{F(liveY)}";
+                points.Add(livePoint);
+                linePoints.Add(livePoint);
+            }
+        }
 
         var firstX = F(GetChartX(from));
-        var lastX = F(GetChartX(to));
+        var lastX = points.Count > 0 ? points[^1].Split(',')[0] : F(GetChartX(to));
         var baseline = F(145.0);
         var path = $"M {firstX},{baseline} L {string.Join(" L ", points)} L {lastX},{baseline} Z";
 
-        return new AreaSegment(path, string.Join(" ", linePoints), cssClass);
+        return new AreaSegment(path, string.Join(" ", linePoints), "zone-teal");
     }
 
     private string ResolveStationName(string stationId)
@@ -344,56 +366,61 @@
         return month;
     }
 
-    private static string FormatDuration(TimeSpan span)
-    {
-        var totalMinutes = Math.Max(0, (int)Math.Round(span.TotalMinutes));
-        if (totalMinutes < 60) return $"{totalMinutes} min";
-
-        var hours = totalMinutes / 60;
-        var minutes = totalMinutes % 60;
-        return minutes == 0 ? $"{hours} h" : $"{hours} h {minutes} min";
-    }
-
-    private record XAxisTick(double Percent, string Label);
+    private record XAxisTick(double Percent, string Label, bool IsLive = false);
 
     private List<XAxisTick> BuildXAxisTicks()
     {
         var ticks = new List<XAxisTick>();
         if (Timestamps.Count < 2) return ticks;
 
-        var latest = Timestamps[^1];
-        var earliest = Timestamps[0];
-        var totalMinutes = (latest - earliest).TotalMinutes;
-        if (totalMinutes <= 0) return ticks;
+        var earliest = ToUtc(Timestamps[0]);
+        var chartEnd = GetChartEndTimestamp();
+        if (chartEnd <= earliest) return ticks;
 
-        // Always anchor the right edge at "now".
-        ticks.Add(new XAxisTick(100, "now"));
-
-        // Pick a step so we get roughly 3-5 ticks across the chart.
-        var totalHours = totalMinutes / 60.0;
-        var stepHours = totalHours switch
+        // Live tick at its real x position
+        if (LiveTimestamp is DateTime liveTimestamp)
         {
-            <= 2 => 0.5,
-            <= 6 => 1,
-            <= 12 => 2,
-            <= 24 => 4,
-            _ => 6
-        };
+            var liveUtc = ToUtc(liveTimestamp);
+            if (liveUtc >= ToUtc(Timestamps[0]))
+            {
+                var livePercent = GetChartX(liveUtc) / 4.0;
+                if (livePercent.HasValue)
+                    ticks.Add(new XAxisTick(livePercent.Value, $"{FormatLocalTime(liveUtc)} live", IsLive: true));
+            }
+        }
 
-        for (var hoursAgo = stepHours; hoursAgo <= totalHours + 0.01; hoursAgo += stepHours)
+        var firstHour = RoundUpToHour(earliest.ToLocalTime());
+        var chartEndLocal = chartEnd.ToLocalTime();
+        for (var tickLocal = firstHour; tickLocal < chartEndLocal; tickLocal = tickLocal.AddHours(1))
         {
-            var minutesAgo = hoursAgo * 60;
-            var percent = 100.0 - (minutesAgo / totalMinutes * 100.0);
-            if (percent < 2) break;
+            var percent = GetChartX(tickLocal.ToUniversalTime()) / 4.0;
+            if (percent is null or <= 2) continue;
 
-            var label = stepHours < 1
-                ? $"{(int)Math.Round(minutesAgo)} min ago"
-                : $"{hoursAgo:0.#} h ago";
-            ticks.Add(new XAxisTick(percent, label));
+            // Skip if too close to the live tick
+            var tooClose = ticks.Any(t => t.IsLive && Math.Abs(t.Percent - percent.Value) < 5);
+            if (tooClose) continue;
+
+            ticks.Add(new XAxisTick(percent.Value, tickLocal.ToString("HH:mm", InvariantCulture)));
         }
 
         return ticks;
     }
+
+    private static DateTime RoundUpToHour(DateTime value)
+    {
+        var hour = new DateTime(value.Year, value.Month, value.Day, value.Hour, 0, 0, value.Kind);
+        return value == hour ? hour : hour.AddHours(1);
+    }
+
+    private static string FormatLocalTime(DateTime value) =>
+        ToUtc(value).ToLocalTime().ToString("HH:mm", InvariantCulture);
+
+    private static DateTime ToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
 
     private static string F(double value) => value.ToString("0.##", InvariantCulture);
 }

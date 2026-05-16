@@ -7,19 +7,19 @@ namespace HslBikeApp.Tests.Services;
 
 public class SnapshotServiceTests
 {
-    private static SnapshotService CreateServiceWithResponse(string json)
+    private static SnapshotService CreateServiceWithResponse(string json, TrendThresholds? trendThresholds = null)
     {
         var httpClient = new HttpClient(new StubHttpMessageHandler((_, _) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             })));
-        return new SnapshotService(httpClient, "https://aggregator.example");
+        return new SnapshotService(httpClient, "https://aggregator.example", trendThresholds);
     }
 
-    private static SnapshotService CreateServiceWithFetch(string json)
+    private static SnapshotService CreateServiceWithFetch(string json, TrendThresholds? trendThresholds = null)
     {
-        var service = CreateServiceWithResponse(json);
+        var service = CreateServiceWithResponse(json, trendThresholds);
         service.FetchSnapshotsAsync().GetAwaiter().GetResult();
         return service;
     }
@@ -180,6 +180,66 @@ public class SnapshotServiceTests
     }
 
     [Fact]
+    public void GetTrendSummary_WhenDeltaReachesChangeThreshold_ReturnsIncreasing()
+    {
+        var now = DateTime.UtcNow;
+        var json = $$"""
+            {
+              "intervalMinutes": 15,
+              "timestamps": ["{{now.AddMinutes(-15):o}}", "{{now:o}}"],
+              "rows": [["001", 5, 6]]
+            }
+            """;
+        var service = CreateServiceWithFetch(json);
+
+        var summary = service.GetTrendSummary("001");
+
+        Assert.Equal(AvailabilityTrend.Increasing, summary.Trend);
+    }
+
+    [Fact]
+    public void GetTrendSummary_WhenDeltaReachesRapidChangeThreshold_ReturnsRapidIncrease()
+    {
+        var now = DateTime.UtcNow;
+        var json = $$"""
+            {
+              "intervalMinutes": 15,
+              "timestamps": ["{{now.AddMinutes(-15):o}}", "{{now:o}}"],
+              "rows": [["001", 5, 8]]
+            }
+            """;
+        var service = CreateServiceWithFetch(json);
+
+        var summary = service.GetTrendSummary("001");
+
+        Assert.Equal(AvailabilityTrend.RapidIncrease, summary.Trend);
+    }
+
+    [Fact]
+    public void GetTrendSummary_WhenCustomThresholdsAreHigher_UsesConfiguredThresholds()
+    {
+        var now = DateTime.UtcNow;
+        var json = $$"""
+            {
+              "intervalMinutes": 15,
+              "timestamps": ["{{now.AddMinutes(-15):o}}", "{{now:o}}"],
+              "rows": [["001", 5, 8]]
+            }
+            """;
+        var service = CreateServiceWithFetch(json, new TrendThresholds(ChangeBikes: 2, RapidChangeBikes: 5));
+
+        var summary = service.GetTrendSummary("001");
+
+        Assert.Equal(AvailabilityTrend.Increasing, summary.Trend);
+    }
+
+    [Fact]
+    public void TrendThresholds_WhenRapidChangeIsLowerThanChange_ThrowsArgumentOutOfRangeException()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TrendThresholds(ChangeBikes: 3, RapidChangeBikes: 2));
+    }
+
+    [Fact]
     public void GetTrendSummary_WhenNoData_ReturnsStableWithZeroDeltaAndWindow()
     {
         var service = CreateServiceWithFetch(
@@ -246,7 +306,7 @@ public class SnapshotServiceTests
     {
         // Last snapshot T-2min, prev snapshot T-17min.
         // Live is 2 min after last snapshot → within 10 min → use prev (T-17) vs live.
-        // Prev count = 4, live count = 10 → delta = +6 over ~19 min → rate ~0.32/min → Stable.
+        // Prev count = 4, live count = 10 → delta = +6, which crosses the rapid threshold.
         var now = DateTime.UtcNow;
         var tPrev = now.AddMinutes(-17);
         var tLast = now.AddMinutes(-2);
@@ -262,6 +322,7 @@ public class SnapshotServiceTests
 
         var summary = service.GetTrendSummary("001", liveCount: 10, liveTimestamp: tLive);
 
+        Assert.Equal(AvailabilityTrend.RapidIncrease, summary.Trend);
         // baseline is prev snapshot (count=4, T-17min); live count=10
         Assert.Equal(6, summary.DeltaBikes);
         Assert.InRange(summary.WindowMinutes, 16, 18);
@@ -271,7 +332,7 @@ public class SnapshotServiceTests
     public void GetTrendSummary_WithLive_WhenLiveIsMoreThan10MinAfterLastSnapshot_UsesLastSnapshotVsLive()
     {
         // Last snapshot T-12min. Live is 12 min after → ≥ 10 min → use last vs live.
-        // Last count = 5, live count = 15 → delta = +10 over 12 min → rate ~0.83/min → Increasing.
+        // Last count = 5, live count = 15 → delta = +10, which crosses the rapid threshold.
         var now = DateTime.UtcNow;
         var tPrev = now.AddMinutes(-27);
         var tLast = now.AddMinutes(-12);
@@ -287,7 +348,7 @@ public class SnapshotServiceTests
 
         var summary = service.GetTrendSummary("001", liveCount: 15, liveTimestamp: tLive);
 
-        Assert.Equal(AvailabilityTrend.Increasing, summary.Trend);
+        Assert.Equal(AvailabilityTrend.RapidIncrease, summary.Trend);
         Assert.Equal(10, summary.DeltaBikes);
         Assert.InRange(summary.WindowMinutes, 11, 13);
     }
@@ -324,10 +385,10 @@ public class SnapshotServiceTests
     }
 
     [Fact]
-    public void GetTrendSummary_WithLive_WhenLiveCloseToLastSnapshot_ReturnsStableForSlowRate()
+    public void GetTrendSummary_WithLive_WhenLiveCloseToLastSnapshot_ReturnsRapidIncreaseForLargeDelta()
     {
         // Live within 10 min of last snapshot → falls back to S_prev vs live.
-        // Window ≈ 18 min, delta = 7 − 0 = 7, rate ≈ 0.39/min → below 0.5 threshold → Stable.
+        // Window ≈ 18 min, delta = 7 − 0 = 7, which crosses the rapid threshold.
         var now = DateTime.UtcNow;
         var tPrev = now.AddMinutes(-18);
         var tLast = now.AddMinutes(-3);
@@ -342,7 +403,7 @@ public class SnapshotServiceTests
 
         var summary = service.GetTrendSummary("001", liveCount: 7, liveTimestamp: now);
 
-        Assert.Equal(AvailabilityTrend.Stable, summary.Trend);
+        Assert.Equal(AvailabilityTrend.RapidIncrease, summary.Trend);
         Assert.Equal(7, summary.DeltaBikes);
         Assert.InRange(summary.WindowMinutes, 17, 19);
     }
