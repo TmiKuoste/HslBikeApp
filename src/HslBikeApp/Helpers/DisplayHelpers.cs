@@ -54,7 +54,7 @@ public static class DisplayHelpers
             return null;
 
         if (summary.Trend == AvailabilityTrend.Stable || summary.DeltaBikes == 0)
-            return $"No change in the last {summary.WindowMinutes} min";
+            return null;
 
         var magnitude = Math.Abs(summary.DeltaBikes);
         var noun = magnitude == 1 ? "bike" : "bikes";

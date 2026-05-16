@@ -383,6 +383,19 @@ html, body {
 }
 
 /* ===== Snapshot availability chart ===== */
+.availability-card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.availability-updated {
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .snapshot-chart-layout {
     display: flex;
     align-items: stretch;
@@ -393,7 +406,7 @@ html, body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 3px 0 20px;
+    padding: 3px 0 48px;
     font-size: 10px;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
@@ -416,16 +429,22 @@ html, body {
 
 .snapshot-x-axis {
     position: relative;
-    height: 14px;
-    margin-top: 2px;
+    height: 46px;
+    margin-top: 4px;
     font-size: 10px;
     color: var(--text-secondary);
 }
 
 .snapshot-x-axis span {
     position: absolute;
-    transform: translateX(-50%);
+    top: 4px;
+    transform: translateX(-50%) rotate(90deg);
+    transform-origin: top center;
     white-space: nowrap;
+}
+
+.snapshot-x-axis span.x-axis-live {
+    /* same rotation as other ticks — no special override */
 }
 
 .snapshot-chart .capacity-line {
@@ -435,16 +454,42 @@ html, body {
     opacity: 0.5;
 }
 
-.snapshot-chart .zone-green { fill: rgba(56, 142, 60, 0.35); }
-.snapshot-chart .zone-amber { fill: rgba(245, 124, 0, 0.35); }
-.snapshot-chart .zone-red { fill: rgba(211, 47, 47, 0.35); }
+.snapshot-chart .zone-teal { fill: rgba(0, 150, 136, 0.25); }
 
 .snapshot-chart polyline.snapshot-line { fill: none; stroke-width: 2; }
-.snapshot-chart polyline.zone-green { stroke: #388e3c; }
-.snapshot-chart polyline.zone-amber { stroke: #f57c00; }
-.snapshot-chart polyline.zone-red { stroke: #d32f2f; }
+.snapshot-chart polyline.zone-teal { stroke: var(--primary); }
 
-.snapshot-chart .latest-dot { fill: var(--primary); }
+.snapshot-chart .live-dot-svg {
+    fill: var(--primary);
+    stroke: #fff;
+    stroke-width: 1.5;
+}
+
+.snapshot-chart-wrapper .live-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 1.5px solid #fff;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 2;
+}
+.live-label {
+    position: absolute;
+    transform: translateY(-50%);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    pointer-events: none;
+    z-index: 2;
+}
+
 
 /* ===== Monthly stats ===== */
 .stats-toggle {
