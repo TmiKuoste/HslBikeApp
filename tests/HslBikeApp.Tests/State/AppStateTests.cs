@@ -33,7 +33,11 @@ public class AppStateTests
             new HttpClient(liveHandler) { BaseAddress = new Uri("https://test.local/") },
             "https://test.local");
 
-        return new AppState(stationService, statisticsService, cycleLaneService, snapshotService, liveStationService, new StubJsRuntime());
+        var openDataService = new OpenDataService(
+            new HttpClient(new MockHttpHandler()) { BaseAddress = new Uri("https://test.local/") },
+            "https://test.local");
+
+        return new AppState(stationService, statisticsService, cycleLaneService, snapshotService, liveStationService, openDataService, new StubJsRuntime());
     }
 
     [Fact]

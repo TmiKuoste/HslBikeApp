@@ -78,6 +78,11 @@
     </button>
 </div>
 
+@if (State.SelectedOpenDataSeries is not null)
+{
+    <OpenDataDetailPanel Series="State.SelectedOpenDataSeries" OnClose="OnCloseOpenDataPanel" />
+}
+
 @if (State.SelectedStation is not null)
 {
     <StationDetailPanel Station="State.SelectedStation"
@@ -123,6 +128,7 @@
     private async Task RefreshAsync() => await State.RefreshNowAsync();
 
     private void OnClosePanel() => State.ClearSelection();
+    private void OnCloseOpenDataPanel() => State.ClearOpenDataSelection();
 
     private void ToggleSearch()
     {

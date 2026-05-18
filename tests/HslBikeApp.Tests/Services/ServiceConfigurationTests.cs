@@ -58,13 +58,15 @@ public class ServiceConfigurationTests
         var snapshotService = new SnapshotService(httpClient, baseUrl);
         var statisticsService = new StatisticsService(httpClient, baseUrl);
         var liveStationService = new LiveStationService(httpClient, baseUrl);
+        var openDataService = new OpenDataService(httpClient, baseUrl);
 
         await stationService.FetchStationsAsync();
         await snapshotService.FetchSnapshotsAsync();
         await statisticsService.FetchStatisticsAsync("001");
         await liveStationService.RefreshAsync();
+        await openDataService.FetchOpenDataAsync();
 
-        Assert.Equal(4, capturedUris.Count);
+        Assert.Equal(5, capturedUris.Count);
         Assert.All(capturedUris, uri =>
         {
             Assert.Equal("aggregator.example", uri.Host);

@@ -11,15 +11,18 @@ public class AppState : IAsyncDisposable
     private readonly CycleLaneService _cycleLaneService;
     private readonly SnapshotService _snapshotService;
     private readonly LiveStationService _liveStationService;
+    private readonly OpenDataService _openDataService;
     private readonly IJSRuntime _js;
 
     // --------------- scheduling ---------------
     private const int LivePollIntervalMs = 30_000;
     private const int SnapshotBufferSeconds = 50;
     private const int SnapshotRetrySeconds = 30;
+    private const int OpenDataPollIntervalMs = 10 * 60 * 1000;
 
     private Timer? _livePollTimer;
     private Timer? _snapshotRefreshTimer;
+    private Timer? _openDataPollTimer;
     private bool _tabVisible = true;
     private DotNetObjectReference<AppState>? _dotNetRef;
 
@@ -61,6 +64,11 @@ public class AppState : IAsyncDisposable
     public bool ShowCycleLanes { get; private set; }
     public bool IsLoadingCycleLanes { get; private set; }
 
+    // --------------- open data ---------------
+    public List<OpenDataTimeSeries> OpenDataSeries { get; private set; } = [];
+    public OpenDataTimeSeries? SelectedOpenDataSeries { get; private set; }
+    public bool IsLoadingOpenData { get; private set; }
+
     // --------------- change tracking ---------------
     public Dictionary<string, int> BikeChanges { get; private set; } = new();
 
@@ -72,6 +80,7 @@ public class AppState : IAsyncDisposable
         CycleLaneService cycleLaneService,
         SnapshotService snapshotService,
         LiveStationService liveStationService,
+        OpenDataService openDataService,
         IJSRuntime js)
     {
         _stationService = stationService;
@@ -79,6 +88,7 @@ public class AppState : IAsyncDisposable
         _cycleLaneService = cycleLaneService;
         _snapshotService = snapshotService;
         _liveStationService = liveStationService;
+        _openDataService = openDataService;
         _js = js;
     }
 
@@ -89,8 +99,73 @@ public class AppState : IAsyncDisposable
         ScheduleNextSnapshotRefresh();
         StartLivePoll();
 
+        _ = RefreshOpenDataAsync();
+        StartOpenDataPoll();
+
         _dotNetRef = DotNetObjectReference.Create(this);
         await _js.InvokeVoidAsync("VisibilityInterop.register", _dotNetRef);
+    }
+
+    /// <summary>Refreshes open data from <c>GET /api/open-data</c>.</summary>
+    public async Task RefreshOpenDataAsync()
+    {
+        IsLoadingOpenData = true;
+        NotifyStateChanged();
+
+        try
+        {
+            OpenDataSeries = await _openDataService.FetchOpenDataAsync();
+
+            if (SelectedOpenDataSeries is not null)
+            {
+                SelectedOpenDataSeries = OpenDataSeries
+                    .FirstOrDefault(series => series.SourceId == SelectedOpenDataSeries.SourceId);
+            }
+        }
+        catch
+        {
+            // Failures are non-fatal; the panel surfaces nothing rather than blocking the map.
+            OpenDataSeries = [];
+        }
+        finally
+        {
+            IsLoadingOpenData = false;
+            NotifyStateChanged();
+        }
+    }
+
+    public void SelectOpenDataSource(string sourceId)
+    {
+        var series = OpenDataSeries.FirstOrDefault(s => s.SourceId == sourceId);
+        if (series is null) return;
+
+        SelectedOpenDataSeries = series;
+        // Clear any station selection so the two detail panels never overlap.
+        SelectedStation = null;
+        Destinations = [];
+        Statistics = null;
+        NotifyStateChanged();
+    }
+
+    public void ClearOpenDataSelection()
+    {
+        if (SelectedOpenDataSeries is null) return;
+        SelectedOpenDataSeries = null;
+        NotifyStateChanged();
+    }
+
+    private void StartOpenDataPoll()
+    {
+        _openDataPollTimer?.Dispose();
+        _openDataPollTimer = new Timer(
+            async _ =>
+            {
+                if (!_tabVisible) return;
+                await RefreshOpenDataAsync();
+            },
+            null,
+            OpenDataPollIntervalMs,
+            OpenDataPollIntervalMs);
     }
 
     public void SetSearchQuery(string query)
@@ -229,6 +304,8 @@ public class AppState : IAsyncDisposable
         SelectedStation = station;
         Destinations = [];
         Statistics = null;
+        // Clear any open data selection so the two detail panels never overlap.
+        SelectedOpenDataSeries = null;
         NotifyStateChanged();
     }
 
@@ -266,6 +343,7 @@ public class AppState : IAsyncDisposable
         Destinations = [];
         Statistics = null;
         IsLoadingStatistics = false;
+        SelectedOpenDataSeries = null;
         NotifyStateChanged();
     }
 
@@ -336,6 +414,7 @@ public class AppState : IAsyncDisposable
     {
         _livePollTimer?.Dispose();
         _snapshotRefreshTimer?.Dispose();
+        _openDataPollTimer?.Dispose();
 
         if (_dotNetRef is not null)
         {

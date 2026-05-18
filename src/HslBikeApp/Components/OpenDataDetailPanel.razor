@@ -1,0 +1,140 @@
+@using System.Globalization
+@using HslBikeApp.Models
+
+@{
+    var latest = Series.LatestAvailable();
+    var sparkline = BuildSparkline();
+}
+
+<div class="detail-panel">
+    <div class="drag-handle" aria-hidden="true"></div>
+
+    <div class="detail-panel-header">
+        <div class="detail-panel-heading">
+            <h2>@Series.DisplayName</h2>
+            @if (!string.IsNullOrWhiteSpace(Series.Description))
+            {
+                <div class="meta">@Series.Description</div>
+            }
+        </div>
+        <button class="close-btn" @onclick="OnClose" aria-label="Close source details">&#10005;</button>
+    </div>
+
+    <div class="detail-card open-data-value-card">
+        @if (latest is { } point)
+        {
+            <div class="open-data-value">
+                <span class="open-data-value-number">@FormatValue(point.Value)</span>
+                @if (!string.IsNullOrWhiteSpace(Series.Unit))
+                {
+                    <span class="open-data-value-unit">@Series.Unit</span>
+                }
+            </div>
+            <div class="open-data-updated">Updated @FormatLocalTime(point.Timestamp)</div>
+        }
+        else
+        {
+            <div class="open-data-value open-data-value-unavailable">Currently unavailable</div>
+        }
+
+        @if (sparkline is not null)
+        {
+            <div class="snapshot-chart-layout open-data-chart-layout">
+                <div class="snapshot-y-axis">
+                    <span>@FormatValue(sparkline.Max)</span>
+                    <span>@FormatValue(sparkline.Mid)</span>
+                    <span>@FormatValue(sparkline.Min)</span>
+                </div>
+                <div class="snapshot-chart-wrapper">
+                    <svg class="open-data-sparkline" viewBox="0 0 200 60" preserveAspectRatio="none"
+                         aria-label="@($"{Series.DisplayName} history")">
+                        <polyline points="@sparkline.LinePoints" />
+                    </svg>
+                    <div class="snapshot-x-axis open-data-x-axis">
+                        @foreach (var tick in sparkline.XTicks)
+                        {
+                            <span style="left:@F(tick.Percent)%;">@tick.Label</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Series.AttributionUrl))
+    {
+        <div class="open-data-attribution">
+            Source:
+            <a href="@Series.AttributionUrl" target="_blank" rel="noopener noreferrer">@Series.AttributionUrl</a>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public OpenDataTimeSeries Series { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private SparklineData? BuildSparkline()
+    {
+        if (Series.Values.Count < 2) return null;
+
+        var available = new List<(int Index, double Value)>(Series.Values.Count);
+        for (var index = 0; index < Series.Values.Count; index++)
+        {
+            if (Series.Values[index] != OpenDataTimeSeries.UnavailableSentinel)
+                available.Add((index, Series.Values[index]));
+        }
+        if (available.Count < 2) return null;
+
+        var min = available.Min(p => p.Value);
+        var max = available.Max(p => p.Value);
+        var mid = (min + max) / 2;
+        var range = max - min;
+        if (range <= 0) range = 1;
+
+        var lastIndex = Series.Values.Count - 1;
+        var points = new List<string>(available.Count);
+        foreach (var (index, value) in available)
+        {
+            var x = lastIndex == 0 ? 0 : (double)index / lastIndex * 200;
+            var y = 55 - (value - min) / range * 50;
+            points.Add(string.Create(CultureInfo.InvariantCulture, $"{x:0.##},{y:0.##}"));
+        }
+
+        // 4 evenly-spaced x-axis ticks across the full timestamp array
+        var tickCount = Math.Min(4, Series.Timestamps.Count);
+        var xTicks = new List<XTick>(tickCount);
+        for (var i = 0; i < tickCount; i++)
+        {
+            var fraction = tickCount == 1 ? 0.0 : (double)i / (tickCount - 1);
+            var tsIndex = (int)Math.Round(fraction * (Series.Timestamps.Count - 1));
+            xTicks.Add(new XTick(FormatLocalTime(Series.Timestamps[tsIndex]), fraction * 100));
+        }
+
+        return new SparklineData(string.Join(' ', points), min, mid, max, xTicks);
+    }
+
+    private static string FormatValue(double value)
+    {
+        if (Math.Abs(value - Math.Round(value)) < 0.0001)
+            return ((long)Math.Round(value)).ToString("N0", CultureInfo.CurrentCulture);
+        return value.ToString("0.#", CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatLocalTime(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture);
+
+    private static string F(double value) =>
+        value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private sealed record XTick(string Label, double Percent);
+    private sealed record SparklineData(
+        string LinePoints,
+        double Min,
+        double Mid,
+        double Max,
+        List<XTick> XTicks);
+}

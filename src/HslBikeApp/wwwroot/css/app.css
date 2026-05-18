@@ -737,6 +737,78 @@ html, body {
     to { transform: translateY(0); }
 }
 
+/* ===== Open data panel ===== */
+.open-data-chart-layout {
+    margin-top: 14px;
+}
+
+.open-data-chart-layout .snapshot-y-axis {
+    /* chart is 80px tall; x-axis below is 46px — match station panel padding */
+    padding: 3px 0 50px;
+}
+
+.open-data-value-card {
+    text-align: center;
+    padding: 22px 14px;
+}
+
+.open-data-value {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+}
+
+.open-data-value-number {
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+}
+
+.open-data-value-unit {
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.open-data-value-unavailable {
+    font-size: 18px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.open-data-updated {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.open-data-sparkline {
+    width: 100%;
+    height: 80px;
+    display: block;
+}
+
+.open-data-sparkline polyline {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+
+.open-data-attribution {
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.open-data-attribution a {
+    color: var(--primary);
+}
+
 /* ===== Loading ===== */
 .loading-screen {
     display: flex;

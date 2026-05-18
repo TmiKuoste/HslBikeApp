@@ -55,6 +55,26 @@
         await JS.InvokeVoidAsync("MapInterop.updateMarkers",
             System.Text.Json.JsonSerializer.Serialize(markers));
 
+        // Open data sources
+        var openDataMarkers = State.OpenDataSeries.Select(series =>
+        {
+            var latest = series.LatestAvailable();
+            var unit = string.IsNullOrWhiteSpace(series.Unit) ? "" : " " + series.Unit;
+            var tooltip = latest is { } point
+                ? $"<b>{series.DisplayName}</b><br>{FormatValue(point.Value)}{unit}"
+                : $"<b>{series.DisplayName}</b><br>Currently unavailable";
+            return new
+            {
+                id = series.SourceId,
+                lat = series.Lat,
+                lon = series.Lon,
+                tooltip
+            };
+        }).ToList();
+
+        await JS.InvokeVoidAsync("MapInterop.updateOpenDataMarkers",
+            System.Text.Json.JsonSerializer.Serialize(openDataMarkers));
+
         // Cycle lanes
         if (State.ShowCycleLanes && State.CycleLanes.Count > 0)
         {
@@ -107,7 +127,17 @@
     }
 
     [JSInvokable]
+    public void OnOpenDataMarkerClicked(string sourceId) => State.SelectOpenDataSource(sourceId);
+
+    [JSInvokable]
     public void OnMapClicked() => State.ClearSelection();
+
+    private static string FormatValue(double value)
+    {
+        if (Math.Abs(value - Math.Round(value)) < 0.0001)
+            return ((long)Math.Round(value)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     public async ValueTask DisposeAsync()
     {

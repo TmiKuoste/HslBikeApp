@@ -22,6 +22,7 @@ builder.Services.AddSingleton(new StatisticsService(httpClientWithHeaders, aggre
 builder.Services.AddSingleton(new CycleLaneService(plainHttpClient));
 builder.Services.AddSingleton(new SnapshotService(httpClientWithHeaders, aggregatorBaseUrl));
 builder.Services.AddSingleton(new LiveStationService(httpClientWithHeaders, aggregatorBaseUrl));
+builder.Services.AddSingleton(new OpenDataService(httpClientWithHeaders, aggregatorBaseUrl));
 builder.Services.AddSingleton<AppState>();
 
 await builder.Build().RunAsync();
