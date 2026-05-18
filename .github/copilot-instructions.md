@@ -1,12 +1,14 @@
 # HslBikeApp — Copilot Instructions
 
+> **This file is the canonical source of instructions for this repository.** `CLAUDE.md` at the repository root imports this file — edit here, not in `CLAUDE.md`.
+
 ## System Overview
 
 Helsinki city bike availability app. Two repositories form the full system:
 
 | Repo | Role | Tech | Hosting |
 |---|---|---|---|
-| **HslBikeApp** (this repo) | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages (kuoste.github.io/HslBikeApp/) |
+| **HslBikeApp** (this repo) | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages (tmikuoste.github.io/HslBikeApp/) |
 | **HslBikeDataAggregator** | REST backend service | .NET 10, Azure Functions (isolated worker) | Interchangeable — currently Azure Functions |
 
 ## Architecture
@@ -30,22 +32,27 @@ Helsinki city bike availability app. Two repositories form the full system:
 
 ## API Contract (HslBikeDataAggregator endpoints)
 
-- GET /api/stations — current bike availability for all stations
-- GET /api/stations/{id}/availability — aggregated hourly availability profile (graph data)
-- GET /api/stations/{id}/destinations — popular destinations from HSL open history data
-- GET /api/snapshots — recent snapshots for trend calculation (arrows up/down)
+- GET /api/stations — current live bike availability for all stations
+- GET /api/snapshots — columnar snapshot time series for trend calculation
+- GET /api/stations/{id}/statistics — monthly statistics: hourly availability profile + popular destinations
+- GET /api/open-data — open data sources (e.g. venue fill levels)
 
 ## Key Shared Models
 
-- BikeStation — id, name, lat/lon, capacity, bikesAvailable, spacesAvailable, isActive
-- StationSnapshot — timestamp + dictionary of stationId → bikeCount
-- StationHistory — departure/arrival station pair, tripCount, avg duration/distance
-- HourlyAvailability — hour (0–23) + averageBikesAvailable
+- `BikeStation` — id, name, address, lat/lon, capacity, bikesAvailable, spacesAvailable, isActive, lastUpdated; computed: occupancy, isEmpty, isFull
+- `SnapshotTimeSeries` — columnar time series: intervalMinutes, timestamps[], rows[] (each row: [stationId, count0, count1, …])
+- `StationCountSeries` — stationId + int[] counts aligned with timestamps
+- `MonthlyStationStatistics` — monthly station statistics including demand profile and destination table
+- `DemandProfile` — hourly availability data (hour 0–23 → averageBikesAvailable)
+- `DestinationRow` / `DestinationTable` — popular destinations from HSL open history data
+- `TrendSummary` / `TrendThresholds` / `AvailabilityTrend` — trend calculation models
+- `OpenDataTimeSeries` — sourceId, displayName, lat, lon, attributionUrl, timestamps[], values[] (double; `-1` = unavailable/out of season)
+- `CycleLane` — cycle lane geometry
 
 ## Frontend Architecture (this repo)
 
 - **State**: singleton AppState with OnStateChanged event; components subscribe in OnInitialized/OnAfterRenderAsync and unsubscribe on dispose.
-- **Services**: StationService, HistoryService, SnapshotService, CycleLaneService — each takes HttpClient via constructor.
+- **Services**: `StationService`, `LiveStationService`, `SnapshotService`, `StatisticsService`, `CycleLaneService` — each takes HttpClient via constructor. `LiveStationService` maintains a live (timestamp, counts) pair separate from the snapshot history.
 - **Map**: Leaflet.js via JS interop (wwwroot/js/map-interop.js), driven by MapView.razor.
 - **Pages**: single-page app with Home.razor as the main page.
 
@@ -78,16 +85,14 @@ Helsinki city bike availability app. Two repositories form the full system:
 - Use British English consistently in responses, code comments, documentation, commit and pull request text, and GitHub content.
 - Avoid non-English or stray foreign text in responses.
 
-## Issue Ordering
+## Remaining Issues
 
-The backlog is organised into phases. Respect dependencies when picking up work:
+Open issues as of 2026-05-18 — phases 1–3 are complete:
 
-1. **Phase 1 — Migration** (#1, #2, #3): refactor services to call the aggregator. Independent of each other.
-2. **Phase 2 — Cleanup** (#7): simplify Program.cs and remove legacy artefacts. Depends on phase 1.
-3. **Phase 3 — Feature** (#4): hourly availability graph. Depends on aggregator URL being configured.
-4. **Phase 4 — Independent** (#5, #6): geolocation and cycle lanes. No backend dependency.
-5. **Phase 5 — Housekeeping** (#8): British English normalisation. Do after phase 2 to avoid conflicts.
+- **#5** (phase:4-independent): Show user location on the map. No backend dependency.
+- **#6** (phase:4-independent): Revise cycle lane layer with actual infrastructure data. No backend dependency.
+- **#8** (phase:5-housekeeping): Normalise naming to British English across the repository. Do last to avoid conflicts.
 
 ## Trend Calculation Guidelines
 
-- When calculating trends, do not rely solely on the few minutes since the latest live refresh when the snapshot interval is 15 minutes; instead, compare against the full relevant interval (e.g., about 18 minutes in this case).
+- When calculating trends, do not rely solely on the few minutes since the latest live refresh when the snapshot interval is 15 minutes; instead, compare against the full relevant interval (e.g. about 18 minutes in this case).

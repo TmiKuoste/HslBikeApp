@@ -29,10 +29,10 @@ All data flows through a single configurable REST backend (`AggregatorBaseUrl` i
 
 ```
 Page load ──► REST backend (AggregatorBaseUrl)
-                ├─ /api/stations                    ─► live availability
-                ├─ /api/snapshots                   ─► trend arrows
-                ├─ /api/stations/{id}/availability  ─► hourly graph
-                └─ /api/stations/{id}/destinations  ─► popular destinations
+                ├─ /api/stations                       ─► live availability
+                ├─ /api/snapshots                      ─► trend arrows
+                ├─ /api/stations/{id}/statistics       ─► hourly profile + popular destinations
+                └─ /api/open-data                      ─► open data sources (e.g. venue fill levels)
 ```
 
 ## Setup
