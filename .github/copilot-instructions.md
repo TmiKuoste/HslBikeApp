@@ -1,6 +1,6 @@
 # HslBikeApp — Copilot Instructions
 
-> **Keep in sync with `CLAUDE.md`** at the repository root. When updating either file, apply the same change to the other.
+> **This file is the canonical source of instructions for this repository.** `CLAUDE.md` at the repository root imports this file — edit here, not in `CLAUDE.md`.
 
 ## System Overview
 
@@ -95,4 +95,4 @@ Open issues as of 2026-05-18 — phases 1–3 are complete:
 
 ## Trend Calculation Guidelines
 
-- When calculating trends, do not rely solely on the few minutes since the latest live refresh when the snapshot interval is 15 minutes; instead, compare against the full relevant interval (e.g., about 18 minutes in this case).
+- When calculating trends, do not rely solely on the few minutes since the latest live refresh when the snapshot interval is 15 minutes; instead, compare against the full relevant interval (e.g. about 18 minutes in this case).
