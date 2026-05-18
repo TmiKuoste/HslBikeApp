@@ -4,6 +4,7 @@ window.MapInterop = {
     _markers: {},
     _polylines: [],
     _destinationLines: [],
+    _openDataMarkers: {},
     _dotNetRef: null,
     _selectedId: null,
 
@@ -121,6 +122,55 @@ window.MapInterop = {
             this._map.removeLayer(line);
         }
         this._destinationLines = [];
+    },
+
+    updateOpenDataMarkers: function (markersJson) {
+        const markers = JSON.parse(markersJson);
+        const currentIds = new Set(markers.map(m => m.id));
+
+        for (const id of Object.keys(this._openDataMarkers)) {
+            if (!currentIds.has(id)) {
+                this._map.removeLayer(this._openDataMarkers[id]);
+                delete this._openDataMarkers[id];
+            }
+        }
+
+        for (const m of markers) {
+            if (this._openDataMarkers[m.id]) {
+                this._openDataMarkers[m.id].setLatLng([m.lat, m.lon]);
+                if (m.tooltip) this._openDataMarkers[m.id].bindTooltip(m.tooltip, { direction: 'top' });
+                continue;
+            }
+
+            const marker = L.circleMarker([m.lat, m.lon], {
+                radius: 9,
+                color: '#ffffff',
+                weight: 2,
+                fillColor: '#1976d2',
+                fillOpacity: 0.95,
+                className: 'open-data-marker'
+            }).addTo(this._map);
+
+            marker.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                if (this._dotNetRef) {
+                    this._dotNetRef.invokeMethodAsync('OnOpenDataMarkerClicked', m.id);
+                }
+            });
+
+            if (m.tooltip) {
+                marker.bindTooltip(m.tooltip, { direction: 'top' });
+            }
+
+            this._openDataMarkers[m.id] = marker;
+        }
+    },
+
+    clearOpenDataMarkers: function () {
+        for (const id of Object.keys(this._openDataMarkers)) {
+            this._map.removeLayer(this._openDataMarkers[id]);
+        }
+        this._openDataMarkers = {};
     },
 
     invalidateSize: function () {

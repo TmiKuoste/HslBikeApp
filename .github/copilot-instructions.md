@@ -46,13 +46,13 @@ Helsinki city bike availability app. Two repositories form the full system:
 - `DemandProfile` — hourly availability data (hour 0–23 → averageBikesAvailable)
 - `DestinationRow` / `DestinationTable` — popular destinations from HSL open history data
 - `TrendSummary` / `TrendThresholds` / `AvailabilityTrend` — trend calculation models
-- `OpenDataTimeSeries` — sourceId, displayName, lat, lon, attributionUrl, timestamps[], values[] (double; `-1` = unavailable/out of season)
+- `OpenDataTimeSeries` — sourceId, displayName, lat, lon, attributionUrl, optional unit, optional description, timestamps[], values[] (double; `-1` = unavailable/out of season). `LatestAvailable()` returns the most recent non-sentinel sample.
 - `CycleLane` — cycle lane geometry
 
 ## Frontend Architecture (this repo)
 
 - **State**: singleton AppState with OnStateChanged event; components subscribe in OnInitialized/OnAfterRenderAsync and unsubscribe on dispose.
-- **Services**: `StationService`, `LiveStationService`, `SnapshotService`, `StatisticsService`, `CycleLaneService` — each takes HttpClient via constructor. `LiveStationService` maintains a live (timestamp, counts) pair separate from the snapshot history.
+- **Services**: `StationService`, `LiveStationService`, `SnapshotService`, `StatisticsService`, `OpenDataService`, `CycleLaneService` — each takes HttpClient via constructor. `LiveStationService` maintains a live (timestamp, counts) pair separate from the snapshot history. `OpenDataService` fetches generic open data time series rendered through `OpenDataDetailPanel`.
 - **Map**: Leaflet.js via JS interop (wwwroot/js/map-interop.js), driven by MapView.razor.
 - **Pages**: single-page app with Home.razor as the main page.
 
