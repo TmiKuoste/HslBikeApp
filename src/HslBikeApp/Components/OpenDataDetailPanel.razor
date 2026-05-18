@@ -39,13 +39,24 @@
 
         @if (sparkline is not null)
         {
-            <svg class="open-data-sparkline" viewBox="0 0 200 60" preserveAspectRatio="none"
-                 aria-label="@($"{Series.DisplayName} history")">
-                <polyline points="@sparkline.LinePoints" />
-            </svg>
-            <div class="open-data-sparkline-axis">
-                <span>@FormatLocalTime(sparkline.FirstTimestamp)</span>
-                <span>@FormatLocalTime(sparkline.LastTimestamp)</span>
+            <div class="snapshot-chart-layout open-data-chart-layout">
+                <div class="snapshot-y-axis">
+                    <span>@FormatValue(sparkline.Max)</span>
+                    <span>@FormatValue(sparkline.Mid)</span>
+                    <span>@FormatValue(sparkline.Min)</span>
+                </div>
+                <div class="snapshot-chart-wrapper">
+                    <svg class="open-data-sparkline" viewBox="0 0 200 60" preserveAspectRatio="none"
+                         aria-label="@($"{Series.DisplayName} history")">
+                        <polyline points="@sparkline.LinePoints" />
+                    </svg>
+                    <div class="snapshot-x-axis open-data-x-axis">
+                        @foreach (var tick in sparkline.XTicks)
+                        {
+                            <span style="left:@F(tick.Percent)%;">@tick.Label</span>
+                        }
+                    </div>
+                </div>
             </div>
         }
     </div>
@@ -80,6 +91,7 @@
 
         var min = available.Min(p => p.Value);
         var max = available.Max(p => p.Value);
+        var mid = (min + max) / 2;
         var range = max - min;
         if (range <= 0) range = 1;
 
@@ -88,15 +100,21 @@
         foreach (var (index, value) in available)
         {
             var x = lastIndex == 0 ? 0 : (double)index / lastIndex * 200;
-            // SVG y inverted: higher value = smaller y
             var y = 55 - (value - min) / range * 50;
             points.Add(string.Create(CultureInfo.InvariantCulture, $"{x:0.##},{y:0.##}"));
         }
 
-        return new SparklineData(
-            string.Join(' ', points),
-            Series.Timestamps[0],
-            Series.Timestamps[^1]);
+        // 4 evenly-spaced x-axis ticks across the full timestamp array
+        var tickCount = Math.Min(4, Series.Timestamps.Count);
+        var xTicks = new List<XTick>(tickCount);
+        for (var i = 0; i < tickCount; i++)
+        {
+            var fraction = tickCount == 1 ? 0.0 : (double)i / (tickCount - 1);
+            var tsIndex = (int)Math.Round(fraction * (Series.Timestamps.Count - 1));
+            xTicks.Add(new XTick(FormatLocalTime(Series.Timestamps[tsIndex]), fraction * 100));
+        }
+
+        return new SparklineData(string.Join(' ', points), min, mid, max, xTicks);
     }
 
     private static string FormatValue(double value)
@@ -109,5 +127,14 @@
     private static string FormatLocalTime(DateTimeOffset value) =>
         value.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture);
 
-    private sealed record SparklineData(string LinePoints, DateTimeOffset FirstTimestamp, DateTimeOffset LastTimestamp);
+    private static string F(double value) =>
+        value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private sealed record XTick(string Label, double Percent);
+    private sealed record SparklineData(
+        string LinePoints,
+        double Min,
+        double Mid,
+        double Max,
+        List<XTick> XTicks);
 }

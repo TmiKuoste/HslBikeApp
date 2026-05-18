@@ -738,6 +738,15 @@ html, body {
 }
 
 /* ===== Open data panel ===== */
+.open-data-chart-layout {
+    margin-top: 14px;
+}
+
+.open-data-chart-layout .snapshot-y-axis {
+    /* chart is 80px tall; x-axis below is 46px — match station panel padding */
+    padding: 3px 0 50px;
+}
+
 .open-data-value-card {
     text-align: center;
     padding: 22px 14px;
@@ -776,8 +785,7 @@ html, body {
 
 .open-data-sparkline {
     width: 100%;
-    height: 60px;
-    margin-top: 14px;
+    height: 80px;
     display: block;
 }
 
@@ -790,13 +798,6 @@ html, body {
     stroke-linecap: round;
 }
 
-.open-data-sparkline-axis {
-    display: flex;
-    justify-content: space-between;
-    color: var(--text-secondary);
-    font-size: 11px;
-    margin-top: 4px;
-}
 
 .open-data-attribution {
     font-size: 12px;
