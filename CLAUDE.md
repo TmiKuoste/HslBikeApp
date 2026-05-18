@@ -8,7 +8,7 @@ Helsinki city bike availability app. Two repositories form the full system:
 
 | Repo | Role | Tech | Hosting |
 |---|---|---|---|
-| **HslBikeApp** (this repo) | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages (kuoste.github.io/HslBikeApp/) |
+| **HslBikeApp** (this repo) | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages (tmikuoste.github.io/HslBikeApp/) |
 | **HslBikeDataAggregator** | REST backend service | .NET 10, Azure Functions (isolated worker) | Azure Functions |
 
 ## Architecture
@@ -46,6 +46,7 @@ Helsinki city bike availability app. Two repositories form the full system:
 - `DemandProfile` — hourly availability data (hour 0–23 → averageBikesAvailable)
 - `DestinationRow` / `DestinationTable` — popular destinations from HSL open history data
 - `TrendSummary` / `TrendThresholds` / `AvailabilityTrend` — trend calculation models
+- `OpenDataTimeSeries` — sourceId, displayName, lat, lon, attributionUrl, timestamps[], values[] (double; `-1` = unavailable/out of season)
 - `CycleLane` — cycle lane geometry
 
 ## Frontend Architecture
